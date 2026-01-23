@@ -1,0 +1,6 @@
+:root {
+  --text-main: #111827;
+  --border-light: rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --primary-color: #2563eb;
+}

@@ -1,0 +1,75 @@
+# -------------------------
+# Python / FastAPI
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+env/
+
+# Environment variables
+.env.*
+!.env.example
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+
+# Logs
+*.log
+
+# -------------------------
+# FastAPI / Uvicorn
+# -------------------------
+uvicorn.log
+
+# -------------------------
+# Database / Local data
+# -------------------------
+*.sqlite3
+*.db
+
+# -------------------------
+# OS junk
+# -------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------
+# Editor / IDE
+# -------------------------
+.vscode/
+.idea/
+*.swp
+
+# -------------------------
+# Node / Frontend (if same repo)
+# -------------------------
+node_modules/
+dist/
+build/
+
+# -------------------------
+# Docker (optional)
+# -------------------------
+docker-compose.override.yml
+
+# -------------------------
+# Secrets (safety net)
+# -------------------------
+*.pem
+*.key

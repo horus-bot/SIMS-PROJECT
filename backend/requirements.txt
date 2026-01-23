@@ -1,0 +1,19 @@
+# Core framework
+fastapi==0.115.6
+uvicorn[standard]==0.29.0
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Data validation (comes with FastAPI, pinned for safety)
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# HTTP client (for external services if needed)
+httpx==0.27.0
+
+# Utilities
+python-multipart==0.0.9
+
+# Optional but useful (pathfinding, math)
+numpy==1.26.4
