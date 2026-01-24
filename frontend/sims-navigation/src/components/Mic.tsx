@@ -97,13 +97,15 @@ const VoiceToTextMic: React.FC = () => {
     <div
       style={{
         width: "100%",
-        maxWidth: 460,
         padding: "16px",
         borderRadius: 16,
-        border: "1px solid #222",
-        background: "#0b0b0f",
-        color: "#fff",
-        boxShadow: "0 10px 30px rgba(0,0,0,0.35)"
+        border: "1px solid rgba(255, 255, 255, 0.4)",
+        background: "rgba(255, 255, 255, 0.6)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        color: "#1e293b",
+        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -112,18 +114,19 @@ const VoiceToTextMic: React.FC = () => {
           onClick={listening ? stopListening : startListening}
           disabled={!supported}
           style={{
-            width: 64,
-            height: 64,
-            borderRadius: "999px",
+            width: 56,
+            height: 56,
+            borderRadius: "50%",
             border: "none",
             cursor: supported ? "pointer" : "not-allowed",
-            background: listening ? "#ff2d55" : "#1e90ff",
+            background: listening ? "#ef4444" : "#007bff",
             boxShadow: listening
-              ? "0 0 0 10px rgba(255,45,85,0.18)"
-              : "0 0 0 10px rgba(30,144,255,0.16)",
+              ? "0 0 0 8px rgba(239, 68, 68, 0.2)"
+              : "0 0 0 8px rgba(0, 123, 255, 0.2)",
             display: "grid",
             placeItems: "center",
-            transition: "all 0.2s ease"
+            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            transform: listening ? "scale(1.05)" : "scale(1)"
           }}
           title={listening ? "Stop listening" : "Start listening"}
         >
@@ -162,13 +165,22 @@ const VoiceToTextMic: React.FC = () => {
 
         {/* STATUS */}
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>
-            {listening ? "Listening..." : "Voice to Text"}
+          <div style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: listening ? "#ef4444" : "#007bff",
+            marginBottom: 2
+          }}>
+            {listening ? "🎤 Listening..." : "Voice Commands"}
           </div>
 
-          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+          <div style={{
+            fontSize: 13,
+            color: "#64748b",
+            lineHeight: 1.3
+          }}>
             {supported
-              ? "Tap the mic and speak. Transcript will log in console."
+              ? "Tap the mic and speak location names"
               : "Speech Recognition not supported. Use Chrome/Edge."}
           </div>
         </div>
@@ -177,30 +189,40 @@ const VoiceToTextMic: React.FC = () => {
       {/* TRANSCRIPT BOX */}
       <div
         style={{
-          marginTop: 14,
+          marginTop: 12,
           padding: 12,
-          borderRadius: 14,
-          border: "1px solid #1c1c26",
-          background: "#050509",
-          minHeight: 80
+          borderRadius: 12,
+          border: "1px solid rgba(255, 255, 255, 0.3)",
+          background: "rgba(255, 255, 255, 0.5)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          minHeight: 60,
+          boxShadow: "0 2px 4px -1px rgba(0, 0, 0, 0.1)"
         }}
       >
-        <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 6 }}>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: "#475569",
+          marginBottom: 6,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em"
+        }}>
           Transcript:
         </div>
 
-        <div style={{ fontSize: 14, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 14, lineHeight: 1.4, color: "#334155" }}>
           {interimText && (
-            <span style={{ color: "#9aa4b2" }}>{interimText}</span>
+            <span style={{ color: "#94a3b8", fontStyle: "italic" }}>{interimText}</span>
           )}
           {finalText && (
-            <span style={{ color: "#ffffff", fontWeight: 700 }}>
+            <span style={{ color: "#0f172a", fontWeight: 600 }}>
               {finalText}
             </span>
           )}
           {!interimText && !finalText && (
-            <span style={{ color: "#666" }}>
-              Say something like: “Go to BW204”
+            <span style={{ color: "#64748b" }}>
+              Say something like: "Go to BW204" or "Navigate to reception"
             </span>
           )}
         </div>

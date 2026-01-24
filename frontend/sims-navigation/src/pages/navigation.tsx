@@ -140,8 +140,8 @@ const NavigationPage = () => {
             </button>
           </div>
 
-          {/* Voice Input Section */}
-          <div className="voice-input-section">
+          {/* Voice Input */}
+          <div>
             <label className="input-label">Or use voice commands</label>
             <VoiceToTextMic />
           </div>
