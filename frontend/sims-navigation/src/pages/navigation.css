@@ -245,6 +245,15 @@ html {
     gap: 20px;
 }
 
+/* Voice Input Section */
+.voice-input-section {
+    margin-top: 10px;
+}
+
+.voice-input-section .input-label {
+    margin-bottom: 12px;
+}
+
 /* Input Styles */
 .input-label {
     display: block;

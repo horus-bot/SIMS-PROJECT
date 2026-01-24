@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, MapPin, Navigation, ArrowRight, X } from "lucide-react";
 import floorData from "../data/floor_1.json";
+import VoiceToTextMic from "../components/Mic";
 
 import "./navigation.css";
 
@@ -137,6 +138,12 @@ const NavigationPage = () => {
                 {destination ? destination.name : "Search destination"}
               </span>
             </button>
+          </div>
+
+          {/* Voice Input Section */}
+          <div className="voice-input-section">
+            <label className="input-label">Or use voice commands</label>
+            <VoiceToTextMic />
           </div>
 
           {/* GO BUTTON */}
