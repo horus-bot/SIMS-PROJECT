@@ -8,6 +8,6 @@ const Test: React.FC = () => {
       <TestMap />
     </div>
   );
-};
+}
 
 export default Test;
