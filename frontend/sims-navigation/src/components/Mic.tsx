@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { extractIntent } from "../lib/api/intent";
 
 declare global {
   interface Window {
@@ -7,7 +8,17 @@ declare global {
   }
 }
 
-const VoiceToTextMic: React.FC = () => {
+type IntentResponse = {
+  intent: "NAVIGATE" | "UNKNOWN";
+  origin_place: string | null;
+  destination_place: string | null;
+};
+
+type VoiceToTextMicProps = {
+  onIntent?: (data: IntentResponse) => void;
+};
+
+const VoiceToTextMic: React.FC<VoiceToTextMicProps> = ({ onIntent }) => {
   const recognitionRef = useRef<any>(null);
 
   const [supported, setSupported] = useState(false);
@@ -15,6 +26,48 @@ const VoiceToTextMic: React.FC = () => {
 
   const [interimText, setInterimText] = useState("");
   const [finalText, setFinalText] = useState("");
+
+  // ✅ NEW: status message shown in UI
+  const [intentStatus, setIntentStatus] = useState<string>("");
+
+  const callIntentAPI = async (text: string) => {
+    try {
+      setIntentStatus("🔎 Understanding your request...");
+
+      const res = await extractIntent(text);
+
+      // ✅ DEBUG
+      console.log("✅ Groq Intent Response:", res);
+
+      // ✅ show helpful UI message if missing origin/destination
+      const hasOrigin = !!res.origin_place;
+      const hasDestination = !!res.destination_place;
+
+      if (!hasOrigin && !hasDestination) {
+        setIntentStatus(
+          "⚠️ I couldn't detect origin or destination. Please speak a valid journey or choose manually."
+        );
+      } else if (!hasOrigin && hasDestination) {
+        setIntentStatus(
+          `⚠️ Destination found: "${res.destination_place}". Origin not set, please select origin manually.`
+        );
+      } else if (hasOrigin && !hasDestination) {
+        setIntentStatus(
+          `⚠️ Origin found: "${res.origin_place}". Destination not set, please select destination manually.`
+        );
+      } else {
+        setIntentStatus(
+          `✅ Route detected: ${res.origin_place} → ${res.destination_place}`
+        );
+      }
+
+      // ✅ send response to parent
+      onIntent?.(res);
+    } catch (err: any) {
+      console.log("❌ Intent API Error:", err?.message || err, err);
+      setIntentStatus("❌ Intent API failed. Please try again or select manually.");
+    }
+  };
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -29,7 +82,7 @@ const VoiceToTextMic: React.FC = () => {
     const recognition = new SR();
     recognition.lang = "en-IN";
     recognition.interimResults = true;
-    recognition.continuous = false; // best for commands
+    recognition.continuous = false;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
@@ -45,14 +98,19 @@ const VoiceToTextMic: React.FC = () => {
       setInterimText(interim);
 
       if (final.trim()) {
-        setFinalText((prev) => (prev ? prev + " " + final : final));
-        console.log("🎤 Final Transcript:", final.trim());
+        const cleaned = final.trim();
+        setFinalText((prev) => (prev ? prev + " " + cleaned : cleaned));
+
+        // ✅ clear old status and call backend
+        setIntentStatus("");
+        callIntentAPI(cleaned);
       }
     };
 
     recognition.onerror = (e: any) => {
       console.log("❌ Speech Error:", e?.error || e);
       setListening(false);
+      setIntentStatus("❌ Speech recognition error. Try again.");
     };
 
     recognition.onend = () => {
@@ -71,6 +129,7 @@ const VoiceToTextMic: React.FC = () => {
 
     setInterimText("");
     setFinalText("");
+    setIntentStatus("");
     setListening(true);
 
     try {
@@ -78,6 +137,7 @@ const VoiceToTextMic: React.FC = () => {
     } catch (err) {
       console.log("⚠️ Start error:", err);
       setListening(false);
+      setIntentStatus("⚠️ Could not start mic. Try again.");
     }
   };
 
@@ -130,7 +190,7 @@ const VoiceToTextMic: React.FC = () => {
           }}
           title={listening ? "Stop listening" : "Start listening"}
         >
-          {/* simple mic icon */}
+          {/* mic icon */}
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
             <path
               d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"
@@ -165,20 +225,18 @@ const VoiceToTextMic: React.FC = () => {
 
         {/* STATUS */}
         <div style={{ flex: 1 }}>
-          <div style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color: listening ? "#ef4444" : "#007bff",
-            marginBottom: 2
-          }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: listening ? "#ef4444" : "#007bff",
+              marginBottom: 2
+            }}
+          >
             {listening ? "🎤 Listening..." : "Voice Commands"}
           </div>
 
-          <div style={{
-            fontSize: 13,
-            color: "#64748b",
-            lineHeight: 1.3
-          }}>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.3 }}>
             {supported
               ? "Tap the mic and speak location names"
               : "Speech Recognition not supported. Use Chrome/Edge."}
@@ -200,30 +258,53 @@ const VoiceToTextMic: React.FC = () => {
           boxShadow: "0 2px 4px -1px rgba(0, 0, 0, 0.1)"
         }}
       >
-        <div style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: "#475569",
-          marginBottom: 6,
-          textTransform: "uppercase",
-          letterSpacing: "0.05em"
-        }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#475569",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em"
+          }}
+        >
           Transcript:
         </div>
 
         <div style={{ fontSize: 14, lineHeight: 1.4, color: "#334155" }}>
           {interimText && (
-            <span style={{ color: "#94a3b8", fontStyle: "italic" }}>{interimText}</span>
+            <span style={{ color: "#94a3b8", fontStyle: "italic" }}>
+              {interimText}
+            </span>
           )}
+
           {finalText && (
             <span style={{ color: "#0f172a", fontWeight: 600 }}>
               {finalText}
             </span>
           )}
+
           {!interimText && !finalText && (
             <span style={{ color: "#64748b" }}>
-              Say something like: "Go to BW204" or "Navigate to reception"
+              Say something like: "Go to BW204" or "Navigate to NS LAB"
             </span>
+          )}
+
+          {/* ✅ NEW: intent status message */}
+          {intentStatus && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "rgba(15, 23, 42, 0.06)",
+                color: "#0f172a",
+                fontSize: 13,
+                fontWeight: 600
+              }}
+            >
+              {intentStatus}
+            </div>
           )}
         </div>
       </div>

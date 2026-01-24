@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, MapPin, Navigation, ArrowRight, X } from "lucide-react";
-import floorData from "../data/floor_1.json";
+import floorData from "../data/test_1.json";
 import VoiceToTextMic from "../components/Mic";
 
 import "./navigation.css";
@@ -9,6 +9,12 @@ import "./navigation.css";
 type Room = {
   id: string;
   name: string;
+};
+
+type IntentResponse = {
+  intent: "NAVIGATE" | "UNKNOWN";
+  origin_place: string | null;
+  destination_place: string | null;
 };
 
 const NavigationPage = () => {
@@ -22,13 +28,15 @@ const NavigationPage = () => {
     useState<"origin" | "destination" | null>(null);
   const [search, setSearch] = useState("");
 
-  // --- DATA ---
+  // --- DATA (✅ updated for test_1.json "destination") ---
   const rooms: Room[] = useMemo(() => {
-    if (!floorData?.destinations) return [];
-    return Object.entries(floorData.destinations)
-      .map(([id, data]: any) => ({
-        id,
-        name: data.name || data.label || id,
+    const destMap = (floorData as any)?.destination as Record<string, string>;
+    if (!destMap) return [];
+
+    return Object.entries(destMap)
+      .map(([placeName, nearestNodeId]) => ({
+        id: nearestNodeId, // ✅ this is the node id used by map-view
+        name: placeName,   // ✅ human readable name
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, []);
@@ -106,11 +114,7 @@ const NavigationPage = () => {
               onClick={() => openPicker("origin")}
             >
               <Search className="input-icon" />
-              <span
-                className={`input-text ${
-                  origin ? "filled" : "placeholder"
-                }`}
-              >
+              <span className={`input-text ${origin ? "filled" : "placeholder"}`}>
                 {origin ? origin.name : "Search start location"}
               </span>
             </button>
@@ -143,15 +147,32 @@ const NavigationPage = () => {
           {/* Voice Input */}
           <div>
             <label className="input-label">Or use voice commands</label>
-            <VoiceToTextMic />
+            <VoiceToTextMic
+              onIntent={(data: IntentResponse) => {
+                if (!rooms.length) return;
+
+                if (data.origin_place) {
+                  const matchOrigin = rooms.find(
+                    (r) =>
+                      r.name.toLowerCase() === data.origin_place!.toLowerCase()
+                  );
+                  if (matchOrigin) setOrigin(matchOrigin);
+                }
+
+                if (data.destination_place) {
+                  const matchDest = rooms.find(
+                    (r) =>
+                      r.name.toLowerCase() ===
+                      data.destination_place!.toLowerCase()
+                  );
+                  if (matchDest) setDestination(matchDest);
+                }
+              }}
+            />
           </div>
 
           {/* GO BUTTON */}
-          <button
-            className="go-btn"
-            onClick={startNavigation}
-            disabled={!ready}
-          >
+          <button className="go-btn" onClick={startNavigation} disabled={!ready}>
             {ready && <div className="shimmer" />}
             <span>Start Navigation</span>
             <div className="go-pill">
@@ -164,10 +185,7 @@ const NavigationPage = () => {
       {/* Bottom Sheet */}
       {activePicker && (
         <>
-          <div
-            className="modal-overlay"
-            onClick={() => setActivePicker(null)}
-          />
+          <div className="modal-overlay" onClick={() => setActivePicker(null)} />
 
           <div className="modal-content">
             <div
