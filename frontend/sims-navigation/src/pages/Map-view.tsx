@@ -296,8 +296,8 @@ type NodeType = { x: number; y: number; type: string };
 type EdgeType = { from: string; to: string };
 
 // ✅ map coordinate system from your svg viewBox
-const MAP_W = 4101;
-const MAP_H = 3025;
+// const MAP_W = 4101;
+// const MAP_H = 3025;
 
 const MapView = () => {
   const [searchParams] = useSearchParams();
