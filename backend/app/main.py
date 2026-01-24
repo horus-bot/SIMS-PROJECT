@@ -1,8 +1,10 @@
 from fastapi import FastAPI
-from app.api.v1.router import api_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.v1.router import api_router
 
-app = FastAPI(title="Indoor Navigation API")
+app = FastAPI(title="SIMS Indoor Navigation API")
+
+# ✅ Allow ALL origins (for development)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
