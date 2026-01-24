@@ -2,7 +2,7 @@ import "./Header.css";
 
 export default function Header() {
   return (
-    <header className="header">
+    <header className="header" style={{ marginBottom: '40px' }}>
       <div className="header-content">
         <img
           src="/sims_logo.png"
