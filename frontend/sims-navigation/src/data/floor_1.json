@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "building": "Academic Complex",
+    "floor": 1,
+    "unit": "px",
+    "dimensions": { "width": 1400, "height": 1000 },
+    "graph_type": "Mesh/Lattice",
+    "description": "Expanded edge list with loop closures for PDR error correction."
+  },
+  "nodes": {
+    "n_atrium_center": { "x": 700, "y": 500, "type": "hub" },
+    "n_atrium_n": { "x": 700, "y": 450, "type": "path" },
+    "n_atrium_s": { "x": 700, "y": 550, "type": "path" },
+    "n_atrium_w": { "x": 650, "y": 500, "type": "path" },
+    "n_atrium_e": { "x": 750, "y": 500, "type": "path" },
+    "n_atrium_nw": { "x": 650, "y": 450, "type": "path" },
+    "n_atrium_ne": { "x": 750, "y": 450, "type": "path" },
+    "n_atrium_sw": { "x": 650, "y": 550, "type": "path" },
+    "n_atrium_se": { "x": 750, "y": 550, "type": "path" },
+
+    "n_junc_a": { "x": 600, "y": 420, "type": "junction" },
+    "n_a_1": { "x": 500, "y": 420, "type": "path" },
+    "n_a_2": { "x": 400, "y": 420, "type": "path" },
+    "n_a_3": { "x": 300, "y": 420, "type": "path" },
+    "n_a_4": { "x": 200, "y": 420, "type": "path" },
+    "n_a_end": { "x": 120, "y": 420, "type": "terminal" },
+
+    "n_junc_b": { "x": 800, "y": 420, "type": "junction" },
+    "n_b_1": { "x": 900, "y": 420, "type": "path" },
+    "n_b_2": { "x": 1000, "y": 420, "type": "path" },
+    "n_b_3": { "x": 1100, "y": 420, "type": "path" },
+    "n_b_4": { "x": 1200, "y": 420, "type": "path" },
+    "n_b_end": { "x": 1280, "y": 420, "type": "terminal" },
+    "n_secure_b": { "x": 1205, "y": 315, "type": "path" },
+
+    "n_junc_c_vert": { "x": 700, "y": 650, "type": "junction" },
+    "n_junc_c_spine": { "x": 700, "y": 820, "type": "junction" },
+    "n_c_1": { "x": 600, "y": 820, "type": "path" },
+    "n_c_2": { "x": 500, "y": 820, "type": "path" },
+    "n_c_3": { "x": 400, "y": 820, "type": "path" },
+    "n_c_4": { "x": 300, "y": 820, "type": "path" },
+    "n_c_5": { "x": 200, "y": 820, "type": "path" },
+    "n_c_end": { "x": 120, "y": 820, "type": "terminal" },
+
+    "n_service_1": { "x": 1250, "y": 460, "type": "service" },
+    "n_service_2": { "x": 1250, "y": 820, "type": "service" },
+    "n_service_3": { "x": 900, "y": 820, "type": "service" }
+  },
+  "edges": [
+    { "from": "n_atrium_center", "to": "n_atrium_n", "weight": 50 },
+    { "from": "n_atrium_center", "to": "n_atrium_s", "weight": 50 },
+    { "from": "n_atrium_center", "to": "n_atrium_w", "weight": 50 },
+    { "from": "n_atrium_center", "to": "n_atrium_e", "weight": 50 },
+   
+    { "from": "n_atrium_n", "to": "n_atrium_nw", "weight": 50 },
+    { "from": "n_atrium_n", "to": "n_atrium_ne", "weight": 50 },
+    { "from": "n_atrium_s", "to": "n_atrium_sw", "weight": 50 },
+    { "from": "n_atrium_s", "to": "n_atrium_se", "weight": 50 },
+    { "from": "n_atrium_w", "to": "n_atrium_nw", "weight": 50 },
+    { "from": "n_atrium_w", "to": "n_atrium_sw", "weight": 50 },
+    { "from": "n_atrium_e", "to": "n_atrium_ne", "weight": 50 },
+    { "from": "n_atrium_e", "to": "n_atrium_se", "weight": 50 },
+
+    
+    { "from": "n_atrium_nw", "to": "n_junc_a", "weight": 70 },
+    { "from": "n_junc_a", "to": "n_a_1", "weight": 100 },
+    { "from": "n_a_1", "to": "n_a_2", "weight": 100 },
+    { "from": "n_a_2", "to": "n_a_3", "weight": 100 },
+    { "from": "n_a_3", "to": "n_a_4", "weight": 100 },
+    { "from": "n_a_4", "to": "n_a_end", "weight": 80 },
+
+    { "from": "n_atrium_ne", "to": "n_junc_b", "weight": 70 }, 
+    { "from": "n_junc_b", "to": "n_b_1", "weight": 100 },
+    { "from": "n_b_1", "to": "n_b_2", "weight": 100 },
+    { "from": "n_b_2", "to": "n_b_3", "weight": 100 },
+    { "from": "n_b_3", "to": "n_b_4", "weight": 100 },
+    { "from": "n_b_4", "to": "n_b_end", "weight": 80 },
+    
+ 
+    { "from": "n_b_4", "to": "n_secure_b", "weight": 105 },
+
+ 
+    { "from": "n_atrium_s", "to": "n_junc_c_vert", "weight": 100 },
+    { "from": "n_junc_c_vert", "to": "n_junc_c_spine", "weight": 170 },
+    { "from": "n_junc_c_spine", "to": "n_c_1", "weight": 100 },
+    { "from": "n_c_1", "to": "n_c_2", "weight": 100 },
+    { "from": "n_c_2", "to": "n_c_3", "weight": 100 },
+    { "from": "n_c_3", "to": "n_c_4", "weight": 100 },
+    { "from": "n_c_4", "to": "n_c_5", "weight": 100 },
+    { "from": "n_c_5", "to": "n_c_end", "weight": 80 },
+
+  
+    { "from": "n_b_end", "to": "n_service_1", "weight": 50 }, 
+    { "from": "n_service_1", "to": "n_service_2", "weight": 360 },
+    { "from": "n_service_2", "to": "n_service_3", "weight": 350 },
+    { "from": "n_service_3", "to": "n_junc_c_spine", "weight": 200 } 
+  ],
+  "destinations": {
+    "mac_lab": { "name": "MAC Lab", "x": 160, "y": 380, "nearest_node": "n_a_4" },
+    "rt_lab": { "name": "RT Lab", "x": 290, "y": 380, "nearest_node": "n_a_3" },
+    "class_a1": { "name": "Classroom A1", "x": 410, "y": 380, "nearest_node": "n_a_2" },
+    "class_a2": { "name": "Classroom A2", "x": 520, "y": 380, "nearest_node": "n_a_1" },
+    "teachers_room": { "name": "Teachers Room (A)", "x": 330, "y": 460, "nearest_node": "n_a_3" },
+    "hod_office": { "name": "HOD Office", "x": 500, "y": 460, "nearest_node": "n_a_1" },
+
+    "conf_hall": { "name": "Conference Hall", "x": 1000, "y": 380, "nearest_node": "n_b_2" },
+    "registrar": { "name": "Registrar Office", "x": 1120, "y": 380, "nearest_node": "n_b_3" },
+    "dean_office": { "name": "Dean Office", "x": 1220, "y": 300, "nearest_node": "n_secure_b" },
+    "server_room": { "name": "Server Room", "x": 890, "y": 460, "nearest_node": "n_b_1" },
+
+    "lab_1": { "name": "Lab 1", "x": 170, "y": 860, "nearest_node": "n_c_5" },
+    "lab_2": { "name": "Lab 2", "x": 310, "y": 860, "nearest_node": "n_c_4" },
+    "lab_3": { "name": "Lab 3", "x": 450, "y": 860, "nearest_node": "n_c_3" },
+    "wifi_room": { "name": "WiFi Room", "x": 480, "y": 780, "nearest_node": "n_c_2" },
+    "meeting_room": { "name": "Meeting Room (C)", "x": 590, "y": 780, "nearest_node": "n_c_1" },
+    "library": { "name": "Main Library", "x": 740, "y": 720, "nearest_node": "n_junc_c_vert" },
+
+    "stairs_main": { "name": "Main Staircase", "x": 680, "y": 350, "nearest_node": "n_junc_a" },
+    "lift_main": { "name": "Main Lift", "x": 740, "y": 615, "nearest_node": "n_junc_c_vert" }
+  }
+}

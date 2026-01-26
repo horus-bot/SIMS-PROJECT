@@ -1,0 +1,7 @@
+#logs 
+frontend folder placeholder
+branching done 
+app created 
+component and page dir created 
+
+1 px = 1m for the map 

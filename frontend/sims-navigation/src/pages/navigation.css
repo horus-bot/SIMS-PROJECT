@@ -1,0 +1,536 @@
+/* src/pages/navigation.css */
+
+/* --- KEYFRAME ANIMATIONS --- */
+body,
+html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    /* Prevents horizontal scrollbars */
+}
+
+* {
+    box-sizing: border-box;
+    /* Ensures padding doesn't make elements wider than 100% */
+}
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(40px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes slideUpModal {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* --- MAIN CONTAINER --- */
+.nav-page-container {
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+/* --- BACKGROUNDS --- */
+.bg-image {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    /* References the file in your public folder */
+    background-image: url('/hallway.png');
+    background-size: cover;
+    background-position: center;
+    /* Strong blur for that premium "bokeh" effect */
+    filter: blur(8px) brightness(0.9);
+    transform: scale(1.1);
+    /* Prevents white edges from the blur */
+}
+
+.bg-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    /* Blue multiply effect to match brand */
+    background: linear-gradient(to bottom, rgba(30, 58, 138, 0.3), rgba(15, 23, 42, 0.5));
+    mix-blend-mode: multiply;
+}
+
+/* --- CONTENT WRAPPER --- */
+.content-wrapper {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 380px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* --- HEADER SECTION --- */
+.brand-header {
+    margin-bottom: 32px;
+    text-align: center;
+    animation: fadeInDown 0.8s ease-out forwards;
+}
+
+.logo-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 8px 20px;
+    border-radius: 50px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    margin-bottom: 16px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.sims-text {
+    color: #1e3a8a;
+    /* SIMS Navy */
+    font-family: serif;
+    /* Matches the academic feel */
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 0.05em;
+}
+
+/* Custom CSS Sun Icon */
+.sun-icon-css {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sun-core {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #fbbf24;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: white;
+}
+
+.plus-sign {
+    color: white;
+    background: #fbbf24;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    position: relative;
+}
+
+.plus-sign::after,
+.plus-sign::before {
+    content: '';
+    position: absolute;
+    background: white;
+}
+
+.plus-sign::after {
+    width: 6px;
+    height: 2px;
+    top: 4px;
+    left: 2px;
+}
+
+.plus-sign::before {
+    width: 2px;
+    height: 6px;
+    top: 2px;
+    left: 4px;
+}
+
+.sun-rays svg {
+    color: #fbbf24;
+    animation: spin-slow 10s linear infinite;
+}
+
+.hero-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+}
+
+.hero-subtitle {
+    color: #dbeafe;
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.gold-underline {
+    width: 50px;
+    height: 4px;
+    background-color: #fbbf24;
+    margin: 14px auto 0;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* --- GLASS CARD --- */
+.glass-card {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.85);
+    /* Frosted Glass */
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: 32px;
+    padding: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow:
+        0 20px 25px -5px rgba(0, 0, 0, 0.1),
+        0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    animation: slideUp 0.8s ease-out 0.2s forwards;
+    opacity: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Input Styles */
+.input-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-left: 4px;
+}
+
+.fake-input-btn {
+    width: 100%;
+    height: 60px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.fake-input-btn:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+    transform: translateY(-1px);
+}
+
+.input-icon {
+    width: 22px;
+    height: 22px;
+    color: #94a3b8;
+    margin-right: 12px;
+}
+
+.input-text {
+    font-size: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.input-text.placeholder {
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+.input-text.filled {
+    color: #0f172a;
+}
+
+/* Connector Line */
+.connector-container {
+    position: relative;
+    height: 2px;
+    width: 100%;
+    margin: 4px 0;
+}
+
+.connector-line {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #cbd5e1;
+}
+
+.connector-badge {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: #f1f5f9;
+    padding: 4px 12px;
+    border-radius: 12px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+/* Action Button */
+.go-btn {
+    position: relative;
+    width: 100%;
+    height: 64px;
+    margin-top: 12px;
+    border-radius: 18px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 24px;
+    color: white;
+    font-size: 18px;
+    font-weight: 700;
+    overflow: hidden;
+    transition: all 0.3s;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    box-shadow: 0 10px 20px -5px rgba(30, 58, 138, 0.4);
+    cursor: pointer;
+}
+
+.go-btn:disabled {
+    background: #cbd5e1;
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.go-btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 25px -5px rgba(30, 58, 138, 0.5);
+}
+
+.shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 2.5s infinite;
+}
+
+.go-pill {
+    background: #fbbf24;
+    /* Gold */
+    color: #1e3a8a;
+    padding: 10px 20px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 800;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* --- MODAL (BOTTOM SHEET) --- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-content {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top-left-radius: 32px;
+    border-top-right-radius: 32px;
+    z-index: 50;
+    height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -20px 40px rgba(0, 0, 0, 0.2);
+    animation: slideUpModal 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-drag-area {
+    width: 100%;
+    padding: 16px 0;
+    display: flex;
+    justify-content: center;
+    cursor: grab;
+}
+
+.modal-handle {
+    width: 48px;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+
+.modal-header {
+    padding: 0 24px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+.modal-search-area {
+    padding: 20px 24px;
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box svg {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+}
+
+.search-input-field {
+    width: 100%;
+    height: 52px;
+    padding-left: 48px;
+    padding-right: 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    font-size: 16px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.search-input-field:focus {
+    background: white;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.modal-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 16px 32px;
+}
+
+.room-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: white;
+    border: none;
+    border-bottom: 1px solid #f8fafc;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.room-item:hover {
+    background: #eff6ff;
+    border-radius: 16px;
+}
+
+.room-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #eff6ff;
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.room-item:hover .room-icon-box {
+    background: #3b82f6;
+    color: white;
+}
+
+.room-info h4 {
+    margin: 0;
+    font-size: 16px;
+    color: #334155;
+    font-weight: 600;
+}
+
+.room-info p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: #94a3b8;
+}
