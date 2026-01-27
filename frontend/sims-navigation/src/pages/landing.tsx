@@ -146,7 +146,7 @@ export default function Landing() {
         <div className="guidance-wrapper" ref={guidanceRef}>
           <Guidance />
           <div className="guide-text" ref={guideTextRef}>
-            Visual guide to use the app
+            test text
           </div>
         </div>
       </div>
