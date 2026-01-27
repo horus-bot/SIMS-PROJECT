@@ -9,6 +9,8 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import TestMap from "../components/map/testMap"; // ✅ USE YOUR EXISTING TESTMAP
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
+import { usePDR } from "../hooks/userPDR";
+import { applyCRFConstraints } from "../utils/mapMatching";
 
 // --- Styles Object (Inline CSS) ---
 // Color Palette
@@ -302,379 +304,190 @@ type EdgeType = { from: string; to: string };
 const MapView = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [isNavActive, setIsNavActive] = useState(false);
 
   const rawOrigin = searchParams.get("origin");
   const rawDest = searchParams.get("dest");
 
-  // Resolve Aliases (e.g. "BW204" -> "node_001")
   const destinations = testData.destination as Record<string, string>;
   const originId = destinations[rawOrigin || ""] || rawOrigin;
   const destId = destinations[rawDest || ""] || rawDest;
 
-  if (!originId || !destId) {
-    return (
-      <div
-        style={{
-          ...styles.container,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <p style={{ color: "#CBD5E1" }}>Invalid Route Parameters</p>
-        <button
-          onClick={() => navigate("/navigation")}
-          style={{
-            ...styles.btnSecondary,
-            marginTop: "20px",
-            width: "auto",
-            padding: "10px 24px",
-          }}
-        >
-          Go Back
-        </button>
-      </div>
-    );
-  }
-
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
   const edges = useMemo(() => testData.edges as EdgeType[], []);
 
-  // Build adjacency (directed)
-  const graph = useMemo(() => {
-    const g: Record<string, string[]> = {};
-    Object.keys(nodeMap).forEach((id) => (g[id] = []));
-    edges.forEach((e) => {
-      if (g[e.from] && nodeMap[e.to]) g[e.from].push(e.to);
-    });
-    return g;
-  }, [nodeMap, edges]);
+  // Starting Coordinates
+  const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
 
-  // Current pointer node
-  const [currentNode, setCurrentNode] = useState<string>(originId);
+  // 1. PDR HOOK (Integrated)
+  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive);
 
-  useEffect(() => {
-    setCurrentNode(originId);
-  }, [originId]);
+  // 2. CRF CONSTRAINTS (Integrated)
+  const snappedPos = useMemo(() => {
+    return applyCRFConstraints(rawPos.x, rawPos.y);
+  }, [rawPos]);
 
-  // Zoom
-  const [zoom, setZoom] = useState(0.6);
-
-  // viewport ref
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-
-  // camera translate
-  const [camera, setCamera] = useState({ x: 0, y: 0 });
-
-  // Interaction Refs
-  const isDragging = useRef(false);
-  const lastPos = useRef({ x: 0, y: 0 });
-  const lastTouchDist = useRef<number | null>(null);
-
-  // Handlers for Pan & Zoom
-  const handlePointerDown = (e: React.PointerEvent) => {
-    isDragging.current = true;
-    lastPos.current = { x: e.clientX, y: e.clientY };
-    (e.target as Element).setPointerCapture(e.pointerId);
-    if (viewportRef.current) viewportRef.current.style.cursor = "grabbing";
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    e.preventDefault();
-    const dx = e.clientX - lastPos.current.x;
-    const dy = e.clientY - lastPos.current.y;
-    lastPos.current = { x: e.clientX, y: e.clientY };
-
-    setCamera((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    isDragging.current = false;
-    (e.target as Element).releasePointerCapture(e.pointerId);
-    if (viewportRef.current) viewportRef.current.style.cursor = "grab";
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    // Zoom towards center of screen (simple implementation)
-    // For more complex "zoom to mouse", we need to adjust camera x/y based on mouse offset
-    const delta = -e.deltaY * 0.001; 
-    const newZoom = Math.min(2.5, Math.max(0.4, zoom + delta));
-    setZoom(newZoom);
-  };
-
-  // Touch handlers for pinch (React doesn't expose scale on PointerEvents easily)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      lastTouchDist.current = dist;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && lastTouchDist.current !== null) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = dist - lastTouchDist.current;
-      const newZoom = Math.min(2.5, Math.max(0.4, zoom + delta * 0.005));
-      setZoom(newZoom);
-      lastTouchDist.current = dist;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    lastTouchDist.current = null;
-  };
-
-  // ✅ Route (Pathfinding Utility)
+  // Dijkstra Route
   const routePath = useMemo(() => {
     if (!originId || !destId) return [];
     return findShortestPath(originId, destId);
   }, [originId, destId]);
 
-  const routeDistance = useMemo(() => {
-    if (routePath.length < 2) return 0;
-    let total = 0;
-    for (let i = 0; i < routePath.length - 1; i++) {
-      const a = nodeMap[routePath[i]];
-      const b = nodeMap[routePath[i + 1]];
-      if (!a || !b) continue;
-      total += Math.hypot(a.x - b.x, a.y - b.y);
+  // Manual Permission Trigger
+  const startNavigation = async () => {
+    if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+      const res = await (DeviceMotionEvent as any).requestPermission();
+      if (res === 'granted') setIsNavActive(true);
+    } else {
+      setIsNavActive(true);
     }
-    return Math.round(total);
-  }, [routePath, nodeMap]);
-
-  // ✅ move pointer
-  const movePointer = (dir: "up" | "down" | "left" | "right") => {
-    const cur = nodeMap[currentNode];
-    if (!cur) return;
-
-    const neighbors = graph[currentNode] || [];
-    if (!neighbors.length) return;
-
-    const best = neighbors
-      .map((nid) => {
-        const n = nodeMap[nid];
-        if (!n) return null;
-        const dx = n.x - cur.x;
-        const dy = n.y - cur.y;
-
-        let score = -Infinity;
-        if (dir === "up") score = -dy - Math.abs(dx) * 0.35;
-        if (dir === "down") score = dy - Math.abs(dx) * 0.35;
-        if (dir === "left") score = -dx - Math.abs(dy) * 0.35;
-        if (dir === "right") score = dx - Math.abs(dy) * 0.35;
-
-        return { nid, score };
-      })
-      .filter(Boolean) as { nid: string; score: number }[];
-
-    best.sort((a, b) => b.score - a.score);
-
-    const next = best[0]?.nid;
-    if (next) setCurrentNode(next);
   };
 
-  // ✅ follow camera (Only on node change to allow panning)
+  // ✅ Step-by-Step "Play" Feature: Teleport PDR to next node
+  const handlePlayNextNode = () => {
+    // Find which node we are closest to in the path
+    let closestIdx = 0;
+    let minD = Infinity;
+    routePath.forEach((id, idx) => {
+      const n = nodeMap[id];
+      const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
+      if (d < minD) { minD = d; closestIdx = idx; }
+    });
+
+    const nextNodeId = routePath[closestIdx + 1];
+    if (nextNodeId) {
+      const nextNode = nodeMap[nextNodeId];
+      forceSetPos(nextNode.x, nextNode.y); // Updates PDR and Camera
+    }
+  };
+
+  // camera follow logic
+  const [zoom, setZoom] = useState(0.6);
+  const [camera, setCamera] = useState({ x: 0, y: 0 });
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const vp = viewportRef.current;
-    const node = nodeMap[currentNode];
-    if (!vp || !node) return;
+    if (!vp) return;
+    setCamera({ 
+      x: vp.clientWidth / 2 - snappedPos.x * zoom, 
+      y: vp.clientHeight / 2 - snappedPos.y * zoom 
+    });
+  }, [snappedPos, zoom]);
 
-    const vpW = vp.clientWidth;
-    const vpH = vp.clientHeight;
-
-    const targetX = vpW / 2 - node.x * zoom;
-    const targetY = vpH / 2 - node.y * zoom;
-
-    // Clamping logic can be relaxed here if we want free scroll, but let's keep basic bounds
-    // Or just set target directly
-    setCamera({ x: targetX, y: targetY });
-  }, [currentNode]); // Removed zoom dependency to allow manual zoom without snapping back
+  if (!originId || !destId) return <div>Invalid Route</div>;
 
   return (
     <div style={styles.container}>
-      <Header />
+      <header style={styles.header}>
+        <h1 style={styles.headerTitle}>{isNavActive ? "Navigation Active" : "Ready to Start"}</h1>
+        <div style={styles.headerSubtitle}>
+          <span style={{ color: isNavActive ? "#22C55E" : "#64748B" }}>●</span> 
+          {isNavActive ? "Live Sensors Tracking" : "Waiting for activation"}
+        </div>
+      </header>
 
       <div style={styles.mapSection}>
-        <div style={styles.floorPill}>
-          🏢 Floor 1 <span style={{ opacity: 0.85 }}>SIMS</span>
-        </div>
-
-        {/* Zoom controls */}
-        <div style={styles.zoomControls}>
-          <button
-            style={styles.zoomBtn}
-            onClick={() => setZoom((z) => Math.min(2.5, Math.round((z + 0.2) * 100) / 100))}
-            title="Zoom In"
-          >
-            +
-          </button>
-          <button
-            style={styles.zoomBtn}
-            onClick={() => setZoom((z) => Math.max(0.4, Math.round((z - 0.2) * 100) / 100))}
-            title="Zoom Out"
-          >
-            −
-          </button>
-          <button
-            style={styles.zoomBtn}
-            onClick={() => setZoom(1)}
-            title="Reset Zoom"
-          >
-            ⟳
-          </button>
-        </div>
-
-        {/* ✅ VIEWPORT */}
-        <div
-          ref={viewportRef}
-          style={styles.viewport}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          onWheel={handleWheel}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          {/* ✅ CAMERA */}
-          <div
-            style={{
-              ...styles.camera,
-              transform: `translate(${camera.x}px, ${camera.y}px) scale(${zoom})`,
-            }}
-          >
-            {/* ✅ JUST USE TESTMAP COMPONENT */}
+        <div ref={viewportRef} style={styles.viewport}>
+          {/* CAMERA LAYER */}
+          <div style={{
+            ...styles.camera,
+            transform: `translate(${camera.x}px, ${camera.y}px) scale(${zoom})`,
+          }}>
             <TestMap routePath={routePath} />
 
-            {/* ✅ POINTER DOT */}
-            {nodeMap[currentNode] && (
-              <div
-                style={{
-                  ...styles.pointerDot,
-                  left: nodeMap[currentNode].x,
-                  top: nodeMap[currentNode].y,
-                }}
-              />
-            )}
-          </div>
+            {/* LIVE POINTER WITH DIRECTION OF SIGHT */}
+            <div style={{
+              position: "absolute",
+              left: snappedPos.x,
+              top: snappedPos.y,
+              transform: `translate(-50%, -50%) rotate(${heading}deg)`,
+              transition: 'all 0.2s linear',
+              zIndex: 25,
+              pointerEvents: "none",
+            }}>
+              {/* 1. The Vision Beam */}
+              <div style={{
+                position: "absolute",
+                bottom: "50%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "120px",
+                height: "160px",
+                background: "linear-gradient(to top, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 100%)",
+                clipPath: "polygon(50% 100%, 0% 0%, 100% 0%)",
+                zIndex: 24,
+              }} />
+
+              {/* 2. The Main User Dot */}
+              <div style={{
+                ...styles.pointerDot,
+                position: "relative",
+                left: 0,
+                top: 0,
+                transform: "translate(-50%, -50%)",
+                background: '#3B82F6',
+                border: "3px solid white",
+                boxShadow: "0 0 15px rgba(59, 130, 246, 0.5)",
+                zIndex: 26,
+              }}>
+                {/* 3. Tiny Directional Arrow */}
+                <div style={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: "5px solid transparent",
+                  borderRight: "5px solid transparent",
+                  borderBottom: "8px solid white",
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -80%)", 
+                }} />
+              </div>
+            </div>
+          </div> {/* <--- THIS was the missing closing tag for styles.camera */}
         </div>
 
-        {/* Bottom Sheet */}
+        {/* UI OVERLAY (Bottom Sheet) */}
         <div style={styles.bottomSheet}>
           <div style={styles.infoRow}>
-            <div style={{ fontWeight: 800, color: colors.primaryDark }}>
-              Navigation Overview
-            </div>
-
-            <div style={styles.distanceBadge}>📏 {routeDistance} px</div>
+            {!isNavActive ? (
+              <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>
+                🚀 START LIVE TRACKING
+              </button>
+            ) : (
+              <div style={styles.distanceBadge}>📍 {originId} → {destId}</div>
+            )}
           </div>
 
-          <div style={styles.locationsGrid}>
-            <div style={styles.locationNode}>
-              <div style={styles.label}>Origin</div>
-              <div style={styles.value}>{originId}</div>
-            </div>
-
-            <div style={styles.arrowIcon}>→</div>
-
-            <div style={styles.locationNode}>
-              <div style={styles.label}>Destination</div>
-              <div style={styles.value}>{destId}</div>
-            </div>
-          </div>
-
-          {/* Pointer info */}
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div style={{ color: colors.textSecondary, fontSize: 13 }}>
-              👤 Current Pointer:
-              <span
-                style={{
-                  fontWeight: 800,
-                  marginLeft: 6,
-                  color: colors.text,
-                }}
-              >
-                {currentNode}
-              </span>
-            </div>
-
-            <button
-              style={{
-                ...styles.btnSecondary,
-                padding: "10px 14px",
-                fontSize: 13,
-              }}
-              onClick={() => setCurrentNode(originId)}
-            >
-              Reset Pointer
-            </button>
-          </div>
-
-          {/* Arrow pad */}
           <div style={styles.pad}>
             <div style={styles.padEmpty} />
-            <button style={styles.padBtn} onClick={() => movePointer("up")}>
-              ⬆
-            </button>
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y - 50)}>⬆</button>
             <div style={styles.padEmpty} />
 
-            <button style={styles.padBtn} onClick={() => movePointer("left")}>
-              ⬅
-            </button>
-            <button
-              style={{
-                ...styles.padBtn,
-                background: colors.primary,
-                color: "white",
-                border: "none",
-              }}
-              onClick={() => {
-                const idx = routePath.indexOf(currentNode);
-                if (idx >= 0 && idx < routePath.length - 1) {
-                  setCurrentNode(routePath[idx + 1]);
-                }
-              }}
-            >
-              ▶
-            </button>
-            <button style={styles.padBtn} onClick={() => movePointer("right")}>
-              ➡
-            </button>
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x - 50, rawPos.y)}>⬅</button>
+            
+            <button 
+              style={{...styles.padBtn, background: colors.primary, color: "white"}} 
+              onClick={handlePlayNextNode}
+            >▶</button>
+            
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x + 50, rawPos.y)}>➡</button>
 
             <div style={styles.padEmpty} />
-            <button style={styles.padBtn} onClick={() => movePointer("down")}>
-              ⬇
-            </button>
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y + 50)}>⬇</button>
             <div style={styles.padEmpty} />
           </div>
 
           <div style={styles.actionsRow}>
-            <button
-              style={styles.btnSecondary}
-              onClick={() => navigate("/navigation")}
-            >
-              ← Back
-            </button>
-            <button
-              style={styles.btnPrimary}
-              onClick={() => navigate(`/map-view?origin=${originId}&dest=${destId}`)}
-            >
-              Keep Navigating
-            </button>
+            <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
+            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Reset Pos</button>
           </div>
         </div>
       </div>
     </div>
   );
 };
-
 const Header = () => (
   <header style={styles.header}>
     <h1 style={styles.headerTitle}>Navigation Active</h1>
