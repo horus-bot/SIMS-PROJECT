@@ -6,11 +6,10 @@ import {
   type CSSProperties,
 } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import TestMap from "../components/map/testMap"; 
+import TestMap from "../components/map/testMap"; // ✅ USE YOUR EXISTING TESTMAP
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/userPDR";
-import { applyCRFConstraints } from "../utils/mapMatching";
 
 // --- Styles Object (Inline CSS) ---
 // Color Palette
@@ -314,20 +313,83 @@ const MapView = () => {
 
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
 
+  // Compute the route path
+  const routePath = useMemo(() => {
+    if (!originId || !destId) return [];
+    return findShortestPath(originId, destId, nodeMap);
+  }, [originId, destId, nodeMap]);
+
   // Starting Coordinates
   const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
 
   // 1. PDR HOOK (Integrated with CRF)
-  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, applyCRFConstraints);
+  const { rawPos, heading, forceSetPos, resetHeading } = usePDR(
+    startNode.x,
+    startNode.y,
+    isNavActive,
+    routePath,
+    nodeMap
+  );
   
   // 2. Snapped position is now baked into the PDR result
   const snappedPos = rawPos;
+  const relativeHeading = heading; // ✅ heading is already relative now
 
-  // Dijkstra Route
-  const routePath = useMemo(() => {
-    if (!originId || !destId) return [];
-    return findShortestPath(originId, destId);
-  }, [originId, destId]);
+  // Calculate navigation instructions & Total Distance
+  const navigationState = useMemo(() => {
+    if (!routePath.length || !snappedPos) return null;
+    
+    // 1. Calculate Total Route Distance (Origin -> Destination)
+    let totalDistancePixels = 0;
+    for (let i = 0; i < routePath.length - 1; i++) {
+        const n1 = nodeMap[routePath[i]];
+        const n2 = nodeMap[routePath[i+1]];
+        if (n1 && n2) {
+            totalDistancePixels += Math.hypot(n2.x - n1.x, n2.y - n1.y);
+        }
+    }
+    const totalDistanceMeters = (totalDistancePixels / 49).toFixed(1); // 49px = 1m
+
+    // 2. Find current segment and next instruction
+    let currentSegment = 0;
+    let minDist = Infinity;
+    
+    for (let i = 0; i < routePath.length - 1; i++) {
+      const node1 = nodeMap[routePath[i]];
+      const node2 = nodeMap[routePath[i + 1]];
+      if (!node1 || !node2) continue;
+      
+      // Distance from point to line segment
+      const dx = node2.x - node1.x;
+      const dy = node2.y - node1.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length === 0) continue;
+      
+      const t = Math.max(0, Math.min(1, ((snappedPos.x - node1.x) * dx + (snappedPos.y - node1.y) * dy) / (length * length)));
+      const projX = node1.x + t * dx;
+      const projY = node1.y + t * dy;
+      const dist = Math.sqrt((snappedPos.x - projX) ** 2 + (snappedPos.y - projY) ** 2);
+      
+      if (dist < minDist) {
+        minDist = dist;
+        currentSegment = i;
+      }
+    }
+    
+    const nextNode = nodeMap[routePath[currentSegment + 1]];
+    if (!nextNode) return { instruction: "You have arrived!", distance: 0, totalDistance: totalDistanceMeters };
+    
+    const distance = Math.sqrt((nextNode.x - snappedPos.x) ** 2 + (nextNode.y - snappedPos.y) ** 2);
+    const pixelsToMeters = 1 / 49; // 1m = 49px
+    const distanceMeters = distance * pixelsToMeters;
+    
+    return {
+      instruction: `Continue to ${routePath[currentSegment + 1]}`,
+      distance: distanceMeters,
+      totalDistance: totalDistanceMeters,
+      nextNode: routePath[currentSegment + 1]
+    };
+  }, [routePath, snappedPos, nodeMap]);
 
   // Manual Permission Trigger
   const startNavigation = async () => {
@@ -342,6 +404,8 @@ const MapView = () => {
         if (res2 !== "granted") return;
       }
   
+      // ✅ CALIBRATE: Save current heading as base heading for relative navigation
+      resetHeading(); // ✅ calibrates relative heading fresh
       setIsNavActive(true);
     } catch (err) {
       console.log("Permission error:", err);
@@ -363,37 +427,167 @@ const MapView = () => {
     if (nextNodeId) {
       const nextNode = nodeMap[nextNodeId];
       forceSetPos(nextNode.x, nextNode.y); // Updates PDR and Camera
+      setIsFollowing(true); // Snap camera to new position
     }
   };
 
   // camera follow logic
-  const zoom = 0.6;
+  const [zoom, setZoom] = useState(0.6);
+  const [isFollowing, setIsFollowing] = useState(true);
   const [camera, setCamera] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  
+  // Dragging Refs
+  const isDragging = useRef(false);
+  const lastMouse = useRef({ x: 0, y: 0 });
+  const followTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Pinch Zoom Refs
+  const [isPinching, setIsPinching] = useState(false);
+  const initialDistance = useRef(0);
+  const initialZoom = useRef(0);
+
+  // 1. Follow User Effect (Only when isFollowing is true)
   useEffect(() => {
+    if (!isFollowing) return;
     const vp = viewportRef.current;
     if (!vp) return;
     setCamera({ 
       x: vp.clientWidth / 2 - snappedPos.x * zoom, 
       y: vp.clientHeight / 2 - snappedPos.y * zoom 
     });
-  }, [snappedPos, zoom]);
+  }, [snappedPos, zoom, isFollowing]);
+
+  // 2. Auto-follow when navigation starts
+  useEffect(() => {
+    if (isNavActive) {
+      setIsFollowing(true);
+    }
+  }, [isNavActive]);
+
+  // Navigation feedback (Vibration)
+  useEffect(() => {
+    if (!isNavActive || !navigationState) return;
+
+    const distance = navigationState.distance;
+
+    // Vibrate when close to next waypoint
+    if (distance < 3 && distance > 0.5) {
+      if (window.navigator.vibrate) {
+        window.navigator.vibrate([100, 50, 100]); // Double vibration
+      }
+    }
+
+    // Arrived at destination
+    if (distance < 0.5) {
+      if (window.navigator.vibrate) {
+        window.navigator.vibrate([200, 100, 200, 100, 200]); // Success pattern
+      }
+    }
+  }, [navigationState, isNavActive]);
+
+  // 3. Pan Handlers
+  const handlePointerDown = (e: React.PointerEvent) => {
+    isDragging.current = true;
+    setIsFollowing(false); // Unlock camera
+    if (followTimeoutRef.current) {
+      clearTimeout(followTimeoutRef.current);
+      followTimeoutRef.current = null;
+    }
+    lastMouse.current = { x: e.clientX, y: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    const dx = e.clientX - lastMouse.current.x;
+    const dy = e.clientY - lastMouse.current.y;
+    lastMouse.current = { x: e.clientX, y: e.clientY };
+    setCamera(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    isDragging.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    // Start dynamic following after 2 seconds of no panning
+    followTimeoutRef.current = setTimeout(() => {
+      setIsFollowing(true);
+    }, 2000);
+  };
+
+  // 4. Zoom Handlers
+  const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 4.0));
+  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.2));
+  const handleRecenter = () => setIsFollowing(true);
+
+  // Helper: Get distance between two touches
+  const getDistance = (touches: React.TouchList) => {
+    const touch1 = touches[0];
+    const touch2 = touches[1];
+    return Math.sqrt(
+      (touch1.clientX - touch2.clientX) ** 2 + (touch1.clientY - touch2.clientY) ** 2
+    );
+  };
+
+  // Pinch Handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      setIsPinching(true);
+      initialDistance.current = getDistance(e.touches);
+      initialZoom.current = zoom;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isPinching && e.touches.length === 2) {
+      e.preventDefault(); // Prevent page zoom/scroll
+      const newDistance = getDistance(e.touches);
+      const rawScale = newDistance / initialDistance.current;
+      const scale = Math.pow(rawScale, 0.7); // Reduce sensitivity by using fractional power
+      const newZoom = Math.max(0.2, Math.min(4.0, initialZoom.current * scale));
+      setZoom(newZoom);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      setIsPinching(false);
+    }
+  };
 
   if (!originId || !destId) return <div>Invalid Route</div>;
 
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.headerTitle}>{isNavActive ? "Navigation Active" : "Ready to Start"}</h1>
+        <h1 style={styles.headerTitle}>{isNavActive ? "Navigation Active" : "Direction Sensing"}</h1>
         <div style={styles.headerSubtitle}>
-          <span style={{ color: isNavActive ? "#22C55E" : "#64748B" }}>●</span> 
-          {isNavActive ? "Live Sensors Tracking" : "Waiting for activation"}
+          <span style={{ color: isNavActive ? "#22C55E" : "#F59E0B" }}>●</span> 
+          {isNavActive ? "Live Sensors Tracking" : `Pointing: ${relativeHeading.toFixed(0)}°`}
         </div>
       </header>
 
       <div style={styles.mapSection}>
-        <div ref={viewportRef} style={styles.viewport}>
+        {/* Floating Zoom Controls */}
+        <div style={styles.zoomControls}>
+          <button style={styles.zoomBtn} onClick={handleZoomIn}>+</button>
+          <button style={styles.zoomBtn} onClick={handleZoomOut}>-</button>
+          <button style={{...styles.zoomBtn, fontSize: '14px'}} onClick={handleRecenter}>
+            ◉
+          </button>
+        </div>
+
+        <div 
+          ref={viewportRef} 
+          style={styles.viewport}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp} // Safety release
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* CAMERA LAYER */}
           <div style={{
             ...styles.camera,
@@ -401,15 +595,43 @@ const MapView = () => {
           }}>
             <TestMap routePath={routePath} />
 
-            {/* LIVE POINTER WITH DIRECTION OF SIGHT */}
+            {/* Next Waypoint Indicator */}
+            {navigationState && navigationState.nextNode && (
+              <div style={{
+                position: "absolute",
+                left: nodeMap[navigationState.nextNode]?.x || 0,
+                top: nodeMap[navigationState.nextNode]?.y || 0,
+                transform: "translate(-50%, -50%)",
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                backgroundColor: "#10B981",
+                border: "3px solid white",
+                boxShadow: "0 0 15px rgba(16, 185, 129, 0.7)",
+                zIndex: 15,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "12px",
+                fontWeight: "bold",
+                color: "white",
+              }}>
+                <div>{navigationState.distance.toFixed(0)}m</div>
+                <div style={{fontSize: '9px'}}>Left: {navigationState.totalDistance}m</div>
+              </div>
+            )}
+
+            {/* LIVE POINTER WITH DIRECTION OF SIGHT - Always visible, shows where user is pointing */}
             <div style={{
               position: "absolute",
               left: snappedPos.x,
               top: snappedPos.y,
-              transform: `translate(-50%, -50%) rotate(${heading}deg)`,
+              transform: `translate(-50%, -50%) rotate(${relativeHeading}deg)`,
               transition: 'all 0.2s linear',
               zIndex: 25,
               pointerEvents: "none",
+              opacity: isNavActive ? 1 : 0.6, // Slightly transparent when not navigating
             }}>
               {/* 1. The Vision Beam */}
               <div style={{
@@ -461,7 +683,12 @@ const MapView = () => {
                 🚀 START LIVE TRACKING
               </button>
             ) : (
-              <div style={styles.distanceBadge}>📍 {originId} → {destId}</div>
+              <div style={styles.distanceBadge}>
+                {navigationState ?
+                  `${navigationState.instruction} (${navigationState.distance.toFixed(1)}m)` :
+                  "📍 Navigation Ready"
+                }
+              </div>
             )}
           </div>
 
@@ -486,7 +713,29 @@ const MapView = () => {
 
           <div style={styles.actionsRow}>
             <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
-            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Reset Pos</button>
+            <button style={styles.btnPrimary} onClick={() => {
+              forceSetPos(startNode.x, startNode.y);
+              setIsFollowing(true);
+            }}>Reset Pos</button>
+          </div>
+
+          {/* CRF Data Section */}
+          <div style={{
+            marginTop: "12px",
+            padding: "12px",
+            backgroundColor: colors.lightBlue,
+            borderRadius: "12px",
+            border: `1px solid ${colors.accent}`,
+            fontSize: "12px",
+            color: colors.textSecondary,
+            textAlign: "center",
+          }}>
+            <div>📍 Position: X:{snappedPos.x.toFixed(0)} Y:{snappedPos.y.toFixed(0)}</div>
+            <div>🧭 Direction: {relativeHeading.toFixed(0)}°</div>
+            <div>🔍 Zoom: {(zoom * 100).toFixed(0)}%</div>
+            {routePath.length > 0 && (
+              <div>📊 Progress: {Math.round(((routePath.findIndex(id => id === navigationState?.nextNode) || 0) / routePath.length) * 100)}%</div>
+            )}
           </div>
         </div>
       </div>

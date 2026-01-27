@@ -1,35 +1,50 @@
-import testData from "../data/test_1.json";
+type XY = { x: number; y: number };
+type NodeMap = Record<string, XY>;
 
-export const applyCRFConstraints = (x: number, y: number) => {
-  let minDistance = Infinity;
-  let snapped = { x, y };
-  const nodes = testData.nodes as any;
-  const MAX_SNAP = 60; // Max snap distance in pixels
+const MAX_SNAP_DISTANCE = 35; // reduce to 25 if still crossing
 
-  testData.edges.forEach((edge) => {
-    const start = nodes[edge.from];
-    const end = nodes[edge.to];
-    if (!start || !end) return;
+// Snap a point to the closest segment of the ROUTE ONLY
+export function snapToRoute(
+  x: number,
+  y: number,
+  routePath: string[],
+  nodes: NodeMap,
+  prev?: XY
+): XY {
+  if (!routePath || routePath.length < 2) return { x, y };
 
-    // Linear Projection: Find the closest point on the line segment (hallway)
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
+  let best = { x, y };
+  let bestDist = Infinity;
+
+  for (let i = 0; i < routePath.length - 1; i++) {
+    const a = nodes[routePath[i]];
+    const b = nodes[routePath[i + 1]];
+    if (!a || !b) continue;
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
     const l2 = dx * dx + dy * dy;
-    if (l2 === 0) return;
+    if (l2 === 0) continue;
 
-    let t = ((x - start.x) * dx + (y - start.y) * dy) / l2;
-    t = Math.max(0, Math.min(1, t)); // Constrain to hallway length
+    // project point on segment
+    let t = ((x - a.x) * dx + (y - a.y) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
 
-    const projX = start.x + t * dx;
-    const projY = start.y + t * dy;
-    const dist = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
+    const px = a.x + t * dx;
+    const py = a.y + t * dy;
 
-    if (dist < minDistance) {
-      minDistance = dist;
-      snapped = { x: projX, y: projY };
+    const dist = Math.hypot(x - px, y - py);
+
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { x: px, y: py };
     }
-  });
+  }
 
-  // Only snap if within threshold
-  return minDistance < MAX_SNAP ? snapped : { x, y };
-};
+  // Reject movement if far away from route corridor
+  if (bestDist > MAX_SNAP_DISTANCE) {
+    return prev ?? { x, y };
+  }
+
+  return best;
+}
