@@ -4,6 +4,7 @@ export const applyCRFConstraints = (x: number, y: number) => {
   let minDistance = Infinity;
   let snapped = { x, y };
   const nodes = testData.nodes as any;
+  const MAX_SNAP = 60; // Max snap distance in pixels
 
   testData.edges.forEach((edge) => {
     const start = nodes[edge.from];
@@ -29,5 +30,6 @@ export const applyCRFConstraints = (x: number, y: number) => {
     }
   });
 
-  return snapped;
+  // Only snap if within threshold
+  return minDistance < MAX_SNAP ? snapped : { x, y };
 };

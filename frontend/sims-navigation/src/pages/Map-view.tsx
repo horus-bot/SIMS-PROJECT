@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import TestMap from "../components/map/testMap"; // ✅ USE YOUR EXISTING TESTMAP
+import TestMap from "../components/map/testMap"; 
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/userPDR";
@@ -317,13 +317,11 @@ const MapView = () => {
   // Starting Coordinates
   const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
 
-  // 1. PDR HOOK (Integrated)
-  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive);
-
-  // 2. CRF CONSTRAINTS (Integrated)
-  const snappedPos = useMemo(() => {
-    return applyCRFConstraints(rawPos.x, rawPos.y);
-  }, [rawPos]);
+  // 1. PDR HOOK (Integrated with CRF)
+  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, applyCRFConstraints);
+  
+  // 2. Snapped position is now baked into the PDR result
+  const snappedPos = rawPos;
 
   // Dijkstra Route
   const routePath = useMemo(() => {
@@ -333,11 +331,20 @@ const MapView = () => {
 
   // Manual Permission Trigger
   const startNavigation = async () => {
-    if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
-      const res = await (DeviceMotionEvent as any).requestPermission();
-      if (res === 'granted') setIsNavActive(true);
-    } else {
+    try {
+      if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+        const res = await (DeviceMotionEvent as any).requestPermission();
+        if (res !== "granted") return;
+      }
+  
+      if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
+        const res2 = await (DeviceOrientationEvent as any).requestPermission();
+        if (res2 !== "granted") return;
+      }
+  
       setIsNavActive(true);
+    } catch (err) {
+      console.log("Permission error:", err);
     }
   };
 

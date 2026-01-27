@@ -6,21 +6,27 @@ const STRIDE_METERS = 0.7;
 const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER; // ~34.3px
 const SENSITIVITY = 4.5; 
 
-export const usePDR = (initialX: number, initialY: number, isActive: boolean) => {
+export const usePDR = (
+  initialX: number,
+  initialY: number,
+  isActive: boolean,
+  snapFn?: (x: number, y: number) => { x: number; y: number }
+) => {
   const [rawPos, setRawPos] = useState({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
   const lastAccel = useRef(0);
-
-  // We use a ref for heading inside the motion handler to prevent 
-  // the effect from re-running (and flickering) every single time you turn 1 degree.
   const headingRef = useRef(0);
+
+  // ✅ IMPORTANT: update start position when initial changes
+  useEffect(() => {
+    setRawPos({ x: initialX, y: initialY });
+  }, [initialX, initialY]);
 
   const forceSetPos = (x: number, y: number) => setRawPos({ x, y });
 
   useEffect(() => {
     if (!isActive) return;
 
-    // --- MOTION HANDLING (Walking) ---
     const handleMotion = (e: DeviceMotionEvent) => {
       const acc = e.accelerationIncludingGravity;
       if (!acc) return;
@@ -32,51 +38,43 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean) =>
       if (delta > SENSITIVITY) {
         setRawPos(prev => {
           const rad = (headingRef.current * Math.PI) / 180;
-          return {
+
+          const next = {
             x: prev.x + Math.sin(rad) * STRIDE_PX,
-            y: prev.y - Math.cos(rad) * STRIDE_PX 
+            y: prev.y - Math.cos(rad) * STRIDE_PX,
           };
+
+          // ✅ CRF snap happens HERE
+          return snapFn ? snapFn(next.x, next.y) : next;
         });
+
         if (window.navigator.vibrate) window.navigator.vibrate(40);
       }
     };
 
-    // --- ORIENTATION HANDLING (Rotating) ---
     const handleOrientation = (e: any) => {
       let compassHeading = 0;
-
-      if (e.webkitCompassHeading) {
-        compassHeading = e.webkitCompassHeading;
-      } else if (e.alpha !== null) {
-        compassHeading = 360 - e.alpha;
-      }
+      if (e.webkitCompassHeading) compassHeading = e.webkitCompassHeading;
+      else if (e.alpha !== null) compassHeading = 360 - e.alpha;
 
       setHeading(compassHeading);
-      headingRef.current = compassHeading; // Sync ref for motion handler
+      headingRef.current = compassHeading;
     };
 
-    // Listen for motion
-    window.addEventListener('devicemotion', handleMotion);
+    window.addEventListener("devicemotion", handleMotion);
 
-    // ✅ FIXED: Using 'as any' to prevent the "EventListener on type never" TS error
     const win = window as any;
-    const supportsAbsolute = 'ondeviceorientationabsolute' in win;
+    const supportsAbsolute = "ondeviceorientationabsolute" in win;
 
-    if (supportsAbsolute) {
-      win.addEventListener('deviceorientationabsolute', handleOrientation);
-    } else {
-      win.addEventListener('deviceorientation', handleOrientation);
-    }
+    if (supportsAbsolute) win.addEventListener("deviceorientationabsolute", handleOrientation);
+    else win.addEventListener("deviceorientation", handleOrientation);
 
     return () => {
-      window.removeEventListener('devicemotion', handleMotion);
-      if (supportsAbsolute) {
-        win.removeEventListener('deviceorientationabsolute', handleOrientation);
-      } else {
-        win.removeEventListener('deviceorientation', handleOrientation);
-      }
+      window.removeEventListener("devicemotion", handleMotion);
+      if (supportsAbsolute) win.removeEventListener("deviceorientationabsolute", handleOrientation);
+      else win.removeEventListener("deviceorientation", handleOrientation);
     };
-  }, [isActive]); // Only re-run if nav is toggled on/off
+  }, [isActive, snapFn]);
 
   return { rawPos, heading, forceSetPos };
 };
