@@ -295,7 +295,6 @@ const styles: Record<string, CSSProperties> = {
 };
 
 type NodeType = { x: number; y: number; type: string };
-type EdgeType = { from: string; to: string };
 
 // ✅ map coordinate system from your svg viewBox
 // const MAP_W = 4101;
@@ -314,7 +313,6 @@ const MapView = () => {
   const destId = destinations[rawDest || ""] || rawDest;
 
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
-  const edges = useMemo(() => testData.edges as EdgeType[], []);
 
   // Starting Coordinates
   const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
@@ -362,7 +360,7 @@ const MapView = () => {
   };
 
   // camera follow logic
-  const [zoom, setZoom] = useState(0.6);
+  const zoom = 0.6;
   const [camera, setCamera] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -488,13 +486,5 @@ const MapView = () => {
     </div>
   );
 };
-const Header = () => (
-  <header style={styles.header}>
-    <h1 style={styles.headerTitle}>Navigation Active</h1>
-    <div style={styles.headerSubtitle}>
-      <span style={{ color: "#22C55E" }}>●</span> Live Guidance
-    </div>
-  </header>
-);
 
 export default MapView;
