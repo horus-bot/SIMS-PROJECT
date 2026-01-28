@@ -12,12 +12,22 @@ const STRIDE_MAX_PX = STRIDE_MAX_M * PIXELS_PER_METER;
 const STEP_COOLDOWN_MS = 320;
 const PEAK_THRESHOLD = 1.15;
 
-const HEADING_SMOOTHING = 0.1;
+// ✅ heading stability controls
+const HEADING_SMOOTHING = 0.05; // smaller = more stable
+const HEADING_DEADZONE_DEG = 1.2; // ignore tiny jitter
+const HEADING_MAX_TURN_DEG = 6; // max turn per update
+const HEADING_THROTTLE_MS = 60; // reduce heading update spam
 
 type XY = { x: number; y: number };
 
 export const usePDR = (
-initialX: number, initialY: number, isActive: boolean, _routePath: string[], _nodeMap: Record<string, { x: number; y: number; type: string; }>, snapFn?: (x: number, y: number, prev?: XY) => XY) => {
+  initialX: number,
+  initialY: number,
+  isActive: boolean,
+  _routePath: string[],
+  _nodeMap: Record<string, { x: number; y: number; type: string }>,
+  snapFn?: (x: number, y: number, prev?: XY) => XY
+) => {
   const [rawPos, setRawPos] = useState<XY>({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
 
@@ -29,6 +39,7 @@ initialX: number, initialY: number, isActive: boolean, _routePath: string[], _no
   // Heading
   const headingRef = useRef(0);
   const baseHeading = useRef<number | null>(null);
+  const lastHeadingUpdate = useRef(0);
 
   // Reset pos when origin changes
   useEffect(() => {
@@ -44,7 +55,9 @@ initialX: number, initialY: number, isActive: boolean, _routePath: string[], _no
   useEffect(() => {
     if (!isActive) return;
 
+    // ======================
     // STEP DETECTION
+    // ======================
     const handleMotion = (e: DeviceMotionEvent) => {
       const acc = e.accelerationIncludingGravity;
       if (!acc) return;
@@ -88,27 +101,52 @@ initialX: number, initialY: number, isActive: boolean, _routePath: string[], _no
       }
     };
 
-    // HEADING (relative + smooth)
+    // ======================
+    // HEADING (stable + smooth)
+    // ======================
     const handleOrientation = (e: any) => {
       let compassHeading = 0;
 
+      // iOS Safari
       if (e.webkitCompassHeading != null) {
         compassHeading = e.webkitCompassHeading;
-      } else if (e.alpha != null) {
+      }
+      // Android / others
+      else if (e.alpha != null) {
         compassHeading = 360 - e.alpha;
       } else {
         return;
       }
 
+      // ✅ throttle heading updates (reduces jitter spam)
+      const now = Date.now();
+      if (now - lastHeadingUpdate.current < HEADING_THROTTLE_MS) return;
+      lastHeadingUpdate.current = now;
+
+      // ✅ lock starting direction
       if (baseHeading.current === null) {
-        baseHeading.current = compassHeading; // lock start direction
+        baseHeading.current = compassHeading;
       }
 
-      const relative = (compassHeading - baseHeading.current + 180 + 360) % 360;
+      // ✅ correct relative heading (NO +180)
+      const relative = (compassHeading - baseHeading.current + 360) % 360;
 
       const current = headingRef.current;
+
+      // shortest rotation direction
       const rawDiff = ((relative - current + 540) % 360) - 180;
-      const smoothed = (current + rawDiff * HEADING_SMOOTHING + 360) % 360;
+
+      // ✅ deadzone: ignore tiny shakes
+      if (Math.abs(rawDiff) < HEADING_DEADZONE_DEG) return;
+
+      // ✅ clamp: limit max turn speed per update
+      const clampedDiff = Math.max(
+        -HEADING_MAX_TURN_DEG,
+        Math.min(HEADING_MAX_TURN_DEG, rawDiff)
+      );
+
+      // ✅ smoothing
+      const smoothed = (current + clampedDiff * HEADING_SMOOTHING + 360) % 360;
 
       headingRef.current = smoothed;
       setHeading(smoothed);
