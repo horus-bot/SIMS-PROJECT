@@ -16,9 +16,9 @@ export default defineConfig({
       },
     }),
   ],
-  // Add this server block below
+
   server: {
     host: true,
-    allowedHosts: ["53ced87a0164.ngrok-free.app"],
+    allowedHosts: ["53ced87a0164.ngrok-free.app","e6bfc0ca2641.ngrok-free.app"],
   },
 });
