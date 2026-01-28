@@ -12,7 +12,7 @@ const STRIDE_MAX_PX = STRIDE_MAX_M * PIXELS_PER_METER;
 const STEP_COOLDOWN_MS = 320;
 const PEAK_THRESHOLD = 1.15;
 
-const HEADING_SMOOTHING = 0.18;
+const HEADING_SMOOTHING = 0.1;
 
 type XY = { x: number; y: number };
 
@@ -104,7 +104,7 @@ initialX: number, initialY: number, isActive: boolean, routePath: string[], node
         baseHeading.current = compassHeading; // lock start direction
       }
 
-      const relative = (compassHeading - baseHeading.current + 360) % 360;
+      const relative = (compassHeading - baseHeading.current + 180 + 360) % 360;
 
       const current = headingRef.current;
       const rawDiff = ((relative - current + 540) % 360) - 180;
