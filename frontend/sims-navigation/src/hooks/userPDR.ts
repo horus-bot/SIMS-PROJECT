@@ -1,104 +1,145 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 const PIXELS_PER_METER = 49;
 
-// stride tuning
-const STRIDE_MIN_M = 0.45;
+// Stride tuning (Industry average: ~0.76m for men, ~0.67m for women)
+// We use a dynamic range based on step intensity
+const STRIDE_MIN_M = 0.60; 
 const STRIDE_MAX_M = 0.85;
 
 const STRIDE_MIN_PX = STRIDE_MIN_M * PIXELS_PER_METER;
 const STRIDE_MAX_PX = STRIDE_MAX_M * PIXELS_PER_METER;
 
-const STEP_COOLDOWN_MS = 320;
+const STEP_COOLDOWN_MS = 350; // Debounce steps
 
-// ✅ Better step detection params
+// Sensitivity: Lower = more sensitive. 
+// 1.35 reduces false steps (User Request)
 const GRAVITY = 9.81;
-const STEP_MAG_THRESHOLD = 1.25; // how hard the step must be
-const MAG_ALPHA = 0.85; // smoothing (higher = smoother)
+const STEP_MAG_THRESHOLD = 1.35; 
+const MAG_ALPHA = 0.85; // smoothing
 
-// ✅ heading stability controls
-const HEADING_SMOOTHING = 0.05;
-const HEADING_DEADZONE_DEG = 1.2;
-const HEADING_MAX_TURN_DEG = 6;
-const HEADING_THROTTLE_MS = 60;
+// Heading controls
+const HEADING_SMOOTHING = 0.15; // Increased smoothing for stability
+const HEADING_DEADZONE_DEG = 2.0;
+const HEADING_THROTTLE_MS = 50;
 
 type XY = { x: number; y: number };
+type Node = { x: number; y: number; type: string };
 
 export const usePDR = (
   initialX: number,
   initialY: number,
   isActive: boolean,
-  _routePath: string[],
-  _nodeMap: Record<string, { x: number; y: number; type: string }>,
+  routePath: string[],
+  nodeMap: Record<string, Node>,
   snapFn?: (x: number, y: number, prev?: XY) => XY
 ) => {
   const [rawPos, setRawPos] = useState<XY>({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
 
-  // Step detection
+  // Step detection refs
   const lastStepAt = useRef(0);
-
-  // ✅ smooth magnitude + peak detect
   const magSmooth = useRef(GRAVITY);
   const lastMag = useRef(GRAVITY);
 
-  // Heading
+  // Heading refs
   const headingRef = useRef(0);
-  const baseHeading = useRef<number | null>(null);
+  const offsetHeading = useRef<number>(0);
   const lastHeadingUpdate = useRef(0);
+  const isAligned = useRef(false);
+
+  // Calculate Initial Route Direction (to align compass)
+  const initialRouteAzimuth = useMemo(() => {
+    if (routePath.length < 2) return 0;
+    const startId = routePath[0];
+    const nextId = routePath[1];
+    const n1 = nodeMap[startId];
+    const n2 = nodeMap[nextId];
+    if (!n1 || !n2) return 0;
+    
+    // Vector from Start -> Next
+    const dx = n2.x - n1.x;
+    const dy = n2.y - n1.y;
+    
+    // Map Angle (0=Right, 90=Down)
+    const rad = Math.atan2(dy, dx);
+    const deg = (rad * 180) / Math.PI;
+    
+    // Convert to PDR Azimuth (0=Up/North, 90=Right/East)
+    // Map 0 (Right) -> PDR 90
+    // Map 90 (Down) -> PDR 180
+    // Formula: PDR = Map + 90
+    return (deg + 90 + 360) % 360; 
+  }, [routePath, nodeMap]);
 
   // Reset pos when origin changes
   useEffect(() => {
     setRawPos({ x: initialX, y: initialY });
+    isAligned.current = false;
   }, [initialX, initialY]);
 
   const forceSetPos = (x: number, y: number) => setRawPos({ x, y });
 
   const resetHeading = () => {
-    baseHeading.current = null;
+    isAligned.current = false;
   };
 
   useEffect(() => {
     if (!isActive) return;
 
     // ======================
-    // STEP DETECTION (stable)
+    // MOTION (Steps)
     // ======================
     const handleMotion = (e: DeviceMotionEvent) => {
-      const acc = e.accelerationIncludingGravity;
-      if (!acc) return;
+      // Use userAcceleration if available (removes gravity automatically)
+      // Otherwise fallback to accelerationIncludingGravity
+      let mag = 0;
+      
+      if (e.acceleration && e.acceleration.x != null) {
+          const ax = e.acceleration.x ?? 0;
+          const ay = e.acceleration.y ?? 0;
+          const az = e.acceleration.z ?? 0;
+          mag = Math.sqrt(ax * ax + ay * ay + az * az);
+          // With userAcceleration, no gravity baseline needed, but signal is often noisier
+          // We'll treat it similarly but without subtracting 9.81
+      } else if (e.accelerationIncludingGravity) {
+          const acc = e.accelerationIncludingGravity;
+          const ax = acc.x ?? 0;
+          const ay = acc.y ?? 0;
+          const az = acc.z ?? 0;
+          mag = Math.sqrt(ax * ax + ay * ay + az * az);
+          // Apply gravity baseline removal below
+      }
 
-      const ax = acc.x ?? 0;
-      const ay = acc.y ?? 0;
-      const az = acc.z ?? 0;
-
-      const mag = Math.sqrt(ax * ax + ay * ay + az * az);
-
-      // smooth the magnitude
+      // Smooth magnitude
       magSmooth.current = MAG_ALPHA * magSmooth.current + (1 - MAG_ALPHA) * mag;
-
-      // remove gravity baseline
-      const magWithoutGravity = Math.abs(magSmooth.current - GRAVITY);
+      
+      // Determine intensity (remove gravity if using includingGravity)
+      let intensity = Math.abs(magSmooth.current - GRAVITY);
+      if (e.acceleration && e.acceleration.x != null) {
+        intensity = magSmooth.current; // userAcc already removed gravity
+      }
 
       const now = Date.now();
       if (now - lastStepAt.current < STEP_COOLDOWN_MS) return;
 
-      // ✅ detect rising peak (step)
+      // Peak detection
       const rising = magSmooth.current > lastMag.current;
 
-      if (rising && magWithoutGravity > STEP_MAG_THRESHOLD) {
+      if (rising && intensity > STEP_MAG_THRESHOLD) {
         lastStepAt.current = now;
 
         setRawPos((prev) => {
+          // Move in direction of current heading
           const rad = (headingRef.current * Math.PI) / 180;
 
-          // dynamic stride based on step intensity
-          const intensity = Math.min(3, Math.max(1, magWithoutGravity));
-          const stridePx = Math.min(
-            STRIDE_MAX_PX,
-            Math.max(STRIDE_MIN_PX, intensity * (STRIDE_MIN_PX * 1.15))
-          );
+          // Dynamic stride
+          const strideFactor = Math.min(1.5, Math.max(0.8, intensity / 2));
+          const stridePx = Math.min(STRIDE_MAX_PX, Math.max(STRIDE_MIN_PX, STRIDE_MIN_PX * strideFactor));
 
+          // PDR Coordinate Move: 
+          // Heading 0 (North) -> y decreases
+          // Heading 90 (East) -> x increases
           const next = {
             x: prev.x + Math.sin(rad) * stridePx,
             y: prev.y - Math.cos(rad) * stridePx,
@@ -106,81 +147,79 @@ export const usePDR = (
 
           return snapFn ? snapFn(next.x, next.y, prev) : next;
         });
-
-        if (window.navigator.vibrate) window.navigator.vibrate(30);
       }
-
       lastMag.current = magSmooth.current;
     };
 
     // ======================
-    // HEADING (stable + smooth)
+    // ORIENTATION (Heading)
     // ======================
     const handleOrientation = (e: any) => {
-      let compassHeading = 0;
+      let rawCompass = 0;
 
       if (e.webkitCompassHeading != null) {
-        compassHeading = e.webkitCompassHeading;
+        // iOS
+        rawCompass = e.webkitCompassHeading;
       } else if (e.alpha != null) {
-        compassHeading = 360 - e.alpha;
+        // Android (relative or absolute)
+        // REVERSED per user request (User says "moving right shows left")
+        // Previously: 360 - e.alpha
+        // Now: e.alpha (Assumes e.alpha increases CW on this device)
+        rawCompass = e.alpha; 
       } else {
         return;
+      }
+
+      // Auto-align on first sample
+      if (!isAligned.current) {
+         // We want: rawCompass + offset = initialRouteAzimuth
+         // So: offset = initialRouteAzimuth - rawCompass
+         offsetHeading.current = initialRouteAzimuth - rawCompass;
+         isAligned.current = true;
       }
 
       const now = Date.now();
       if (now - lastHeadingUpdate.current < HEADING_THROTTLE_MS) return;
       lastHeadingUpdate.current = now;
 
-      if (baseHeading.current === null) {
-        baseHeading.current = compassHeading;
-      }
+      // Apply Offset + User Tweak (+45 degrees)
+      const calibratedHeading = (rawCompass + offsetHeading.current + 45 + 360) % 360;
 
-      const relative = (compassHeading - baseHeading.current + 360) % 360;
-
+      // Smoothing
       const current = headingRef.current;
-      const rawDiff = ((relative - current + 540) % 360) - 180;
+      let diff = calibratedHeading - current;
+      // Handle wrap-around (e.g. 359 -> 1)
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
 
-      if (Math.abs(rawDiff) < HEADING_DEADZONE_DEG) return;
+      if (Math.abs(diff) < HEADING_DEADZONE_DEG) return;
 
-      const clampedDiff = Math.max(
-        -HEADING_MAX_TURN_DEG,
-        Math.min(HEADING_MAX_TURN_DEG, rawDiff)
-      );
-
-      const smoothed = (current + clampedDiff * HEADING_SMOOTHING + 360) % 360;
+      const smoothed = (current + diff * HEADING_SMOOTHING + 360) % 360;
 
       headingRef.current = smoothed;
       setHeading(smoothed);
     };
 
-    // ✅ passive helps some browsers performance + reliability
+    // Listeners
     window.addEventListener("devicemotion", handleMotion, { passive: true });
-
+    
+    // Try deviceorientationabsolute for Android chrome
     const win = window as any;
-    const supportsAbsolute = "ondeviceorientationabsolute" in win;
-
-    if (supportsAbsolute) {
-      win.addEventListener("deviceorientationabsolute", handleOrientation, {
-        passive: true,
-      });
+    if ("ondeviceorientationabsolute" in win) {
+      win.addEventListener("deviceorientationabsolute", handleOrientation, { passive: true });
     } else {
-      win.addEventListener("deviceorientation", handleOrientation, {
-        passive: true,
-      });
+      win.addEventListener("deviceorientation", handleOrientation, { passive: true });
     }
 
     return () => {
       window.removeEventListener("devicemotion", handleMotion as any);
-      if (supportsAbsolute) {
-        win.removeEventListener(
-          "deviceorientationabsolute",
-          handleOrientation as any
-        );
+      if ("ondeviceorientationabsolute" in win) {
+        win.removeEventListener("deviceorientationabsolute", handleOrientation as any);
       } else {
         win.removeEventListener("deviceorientation", handleOrientation as any);
       }
     };
-  }, [isActive, snapFn]);
+  }, [isActive, snapFn, initialRouteAzimuth]);
 
   return { rawPos, heading, forceSetPos, resetHeading };
 };

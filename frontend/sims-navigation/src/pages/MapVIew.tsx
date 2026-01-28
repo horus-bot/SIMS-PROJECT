@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/userPDR";
-import { useNodeLockedNavigation } from "../hooks/useNodeLockedNaviagtion";
+import { useCRFNavigation } from "../hooks/useCRFNavigation";
 import MapCanvas from "../components/navigation/MapCanvas";
 
 const colors = {
@@ -28,7 +28,6 @@ const styles: Record<string, CSSProperties> = {
     background: colors.primary,
     fontFamily:
       '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    overflow: "hidden",
     position: "fixed",
     inset: 0,
   },
@@ -149,19 +148,17 @@ export default function MapView() {
 
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
 
-  // ✅ routePath is the ONLY list of nodes we navigate through
   const routePath = useMemo(() => {
     if (!originId || !destId) return [];
     return findShortestPath(originId, destId, nodeMap);
   }, [originId, destId, nodeMap]);
 
-  // Start node coordinates
   const startNode = useMemo(
     () => nodeMap[originId || ""] || { x: 785, y: 924 },
     [originId, nodeMap]
   );
 
-  // PDR (sensor gives rawPos)
+  // 1. PDR System (Raw Steps + Heading)
   const { rawPos, heading, forceSetPos, resetHeading } = usePDR(
     startNode.x,
     startNode.y,
@@ -170,33 +167,77 @@ export default function MapView() {
     nodeMap
   );
 
+  // 2. CRF / Map-Matching (Locks PDR to Route)
+  const { correctedPos, currentNode, nextNode, turnDetected, confirmTurn, segmentIndex } = useCRFNavigation({
+    isNavActive,
+    routePath,
+    nodeMap,
+    rawPos,
+    heading,
+    forceSetPos,
+  });
+
   const [zoom, setZoom] = useState(0.6);
   const [isFollowing, setIsFollowing] = useState(true);
 
-  // ✅ Node-locked nav hook
-  const { currentNodeIndex, currentNodeId, nextNodeId, nodeLockedPos, routeFacingAngle } =
-    useNodeLockedNavigation({
-      isNavActive,
-      routePath,
-      nodeMap,
-      rawPos,
-      forceSetPos,
-      setIsFollowing,
-      arriveThresholdPx: 35,
-      forwardThresholdT: 0.92,
-    });
+  // Calculate distance & angle to next node (based on corrected pos)
+  const navInfo = useMemo(() => {
+    if (!nextNode) return null;
+    
+    // Distance from our constrained position to next node
+    const distPx = Math.hypot(nextNode.x - correctedPos.x, nextNode.y - correctedPos.y);
+    const angle = (Math.atan2(nextNode.y - correctedPos.y, nextNode.x - correctedPos.x) * 180) / Math.PI;
+    
+    return {
+        distM: (distPx / 49).toFixed(1),
+        target: nextNode.type || "Node",
+        angle: angle + 90
+    };
+  }, [correctedPos, nextNode]);
 
-  const nextNodeCoord = useMemo(() => {
-    if (!nextNodeId) return null;
-    const n = nodeMap[nextNodeId];
-    return n ? { x: n.x, y: n.y } : null;
-  }, [nextNodeId, nodeMap]);
+  // Auto-confirm logic
+  const [autoConfirmCount, setAutoConfirmCount] = useState(5);
+  useEffect(() => {
+    if (turnDetected.detected) {
+      setAutoConfirmCount(5);
+      const timer = setInterval(() => {
+        setAutoConfirmCount((prev) => {
+          if (prev <= 1) {
+            confirmTurn();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [turnDetected.detected, confirmTurn]);
 
-  const navigationState = useMemo(() => {
-    if (!nextNodeCoord) return null;
-    const distPx = Math.hypot(nextNodeCoord.x - rawPos.x, nextNodeCoord.y - rawPos.y);
-    return { distanceMeters: distPx / 49 };
-  }, [nextNodeCoord, rawPos.x, rawPos.y]);
+  // Instructions Generation
+  const instructions = useMemo(() => {
+    if (!routePath || routePath.length < 2) return [];
+    const steps = [];
+    for (let i = 0; i < routePath.length - 1; i++) {
+        const currId = routePath[i];
+        const nextId = routePath[i+1];
+        const curr = nodeMap[currId];
+        const next = nodeMap[nextId];
+        if (!curr || !next) continue;
+        
+        const dist = Math.hypot(next.x - curr.x, next.y - curr.y) / 49; 
+        
+        // Simple direction logic based on previous vector vs current vector could be added here
+        // For now, we list the segments.
+        
+        steps.push({
+            step: i + 1,
+            text: `Go to ${nextId}`,
+            dist: dist.toFixed(1),
+            isNext: i === segmentIndex  // Accurate tracking
+        });
+    }
+    return steps;
+  }, [routePath, nodeMap, segmentIndex]);
 
   const startNavigation = async () => {
     try {
@@ -204,12 +245,7 @@ export default function MapView() {
         const res = await (DeviceMotionEvent as any).requestPermission();
         if (res !== "granted") return;
       }
-
-      if (typeof (DeviceOrientationEvent as any).requestPermission === "function") {
-        const res2 = await (DeviceOrientationEvent as any).requestPermission();
-        if (res2 !== "granted") return;
-      }
-
+      
       resetHeading();
       setIsNavActive(true);
       setIsFollowing(true);
@@ -218,14 +254,9 @@ export default function MapView() {
     }
   };
 
-  // Vibration feedback
   useEffect(() => {
-    if (!isNavActive || !navigationState) return;
-
-    const d = navigationState.distanceMeters;
-    if (d < 3 && d > 0.5) window.navigator.vibrate?.([100, 50, 100]);
-    if (d < 0.5) window.navigator.vibrate?.([200, 100, 200, 100, 200]);
-  }, [isNavActive, navigationState]);
+    // Optional: add vibration if near target
+  }, []);
 
   if (!originId || !destId) return <div>Invalid Route</div>;
 
@@ -233,77 +264,133 @@ export default function MapView() {
     <div style={styles.container}>
       <header style={styles.header}>
         <h1 style={styles.headerTitle}>
-          {isNavActive ? "Navigation Active" : "Direction Sensing"}
+          {isNavActive ? "PDR Main Active" : "Ready"}
         </h1>
 
         <div style={styles.headerSubtitle}>
           <span style={{ color: isNavActive ? "#22C55E" : "#F59E0B" }}>●</span>
           {isNavActive
-            ? `Route Node: ${currentNodeId || "?"} → ${nextNodeId || "END"}`
-            : `Heading: ${heading.toFixed(0)}°`}
+            ? "Walk to navigate"
+            : "Press Start to enable sensors"}
         </div>
       </header>
 
       <div style={styles.mapSection}>
         <MapCanvas
           routePath={routePath}
-          nodeLockedPos={nodeLockedPos}
-          pointerAngle={routeFacingAngle}
+          nodeLockedPos={correctedPos}
           isNavActive={isNavActive}
-          nextNodeCoord={nextNodeCoord}
-          distanceLabel={navigationState ? `${navigationState.distanceMeters.toFixed(0)}m` : ""}
           zoom={zoom}
           setZoom={setZoom}
           isFollowing={isFollowing}
           setIsFollowing={setIsFollowing}
+          rotation={heading} // ✅ Show User Heading
         />
+      </div>
 
-        {/* Bottom Sheet */}
-        <div style={styles.bottomSheet}>
-          <div style={styles.infoRow}>
-            {!isNavActive ? (
-              <button style={{ ...styles.btnPrimary, width: "100%" }} onClick={startNavigation}>
-                🚀 START LIVE TRACKING
-              </button>
-            ) : (
-              <div style={styles.distanceBadge}>
-                {navigationState
-                  ? `Next node in ${navigationState.distanceMeters.toFixed(1)}m`
-                  : "📍 Navigation Ready"}
+       {/* Turn Confirmation - Bottom Sheet Style */}
+       {turnDetected.detected && (
+          <div style={{
+              position: "absolute",
+              bottom: "180px", // Just above bottom sheet
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#1E293B", 
+              padding: "16px 24px",
+              borderRadius: "50px",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+              zIndex: 100,
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+              minWidth: "280px",
+              justifyContent: "space-between",
+              border: "2px solid #3B82F6",
+              animation: "slideUp 0.3s ease-out"
+          }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "white" }}>
+                  <span style={{ fontSize: "20px" }}>📍</span>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                     <span style={{ fontSize: "14px", fontWeight: 700 }}>Arrived at Node?</span>
+                     <span style={{ fontSize: "11px", color: "#94A3B8" }}>Auto-yes in {autoConfirmCount}s</span>
+                  </div>
               </div>
-            )}
+              <button
+                  style={{
+                      background: "#3B82F6",
+                      color: "white",
+                      border: "none",
+                      padding: "8px 16px",
+                      borderRadius: "20px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontSize: "13px"
+                  }}
+                  onClick={() => confirmTurn()}
+              >
+                  YES
+              </button>
           </div>
+      )}
 
-          <div style={styles.actionsRow}>
-            <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>
-              ← Back
-            </button>
-            <button
-              style={styles.btnPrimary}
+      <div style={styles.bottomSheet}>
+        {navInfo && (
+            <div style={styles.infoRow}>
+                <div>Next: <b>{navInfo.target}</b></div>
+                <div style={styles.distanceBadge}>{navInfo.distM} m</div>
+            </div>
+        )}
+
+        {/* Step-by-Step Instructions */}
+        <div style={{
+            marginTop: "12px",
+            maxHeight: "150px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            paddingRight: "4px"
+        }}>
+            {instructions.map((inst, idx) => (
+                <div key={idx} style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: inst.isNext ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.05)",
+                    borderLeft: inst.isNext ? "3px solid #3B82F6" : "3px solid transparent",
+                    borderRadius: "4px",
+                    color: inst.isNext ? "#fff" : "#94A3B8"
+                }}>
+                    <span style={{ fontSize: "13px" }}>{idx + 1}. {inst.text}</span>
+                    <span style={{ fontSize: "12px", opacity: 0.7 }}>{inst.dist}m</span>
+                </div>
+            ))}
+        </div>
+
+        <div style={styles.actionsRow}>
+          <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>
+            ← Back
+          </button>
+          {!isNavActive && (
+              <button
+                style={styles.btnPrimary}
+                onClick={startNavigation}
+              >
+                🚀 Start Walking
+              </button>
+          )}
+           <button
+              style={{...styles.btnPrimary, background: "#6366f1"}}
               onClick={() => {
                 forceSetPos(startNode.x, startNode.y);
                 setIsFollowing(true);
               }}
             >
-              Reset Pos
+              Reset
             </button>
-          </div>
-
-          {/* Debug */}
-          <div style={{ fontSize: "12px", color: colors.textSecondary, textAlign: "center" }}>
-            <div>
-              📍 RawPos: X:{rawPos.x.toFixed(0)} Y:{rawPos.y.toFixed(0)}
-            </div>
-            <div>
-              🎯 NodeLocked: X:{nodeLockedPos.x.toFixed(0)} Y:{nodeLockedPos.y.toFixed(0)}
-            </div>
-            <div>➡ Route Facing: {routeFacingAngle.toFixed(0)}°</div>
-            <div>
-              🧩 Index: {currentNodeIndex}/{Math.max(routePath.length - 1, 0)}
-            </div>
-          </div>
         </div>
       </div>
     </div>
   );
 }
+

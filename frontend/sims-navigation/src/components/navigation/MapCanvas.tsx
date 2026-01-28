@@ -5,7 +5,6 @@ import LivePointer from "./LivePointer";
 type Props = {
   routePath: string[];
   nodeLockedPos: { x: number; y: number };
-  pointerAngle: number;
   isNavActive: boolean;
 
   nextNodeCoord?: { x: number; y: number } | null;
@@ -16,12 +15,12 @@ type Props = {
 
   isFollowing: boolean;
   setIsFollowing: (v: boolean) => void;
+  rotation?: number;
 };
 
 export default function MapCanvas({
   routePath,
   nodeLockedPos,
-  pointerAngle,
   isNavActive,
   nextNodeCoord,
   distanceLabel,
@@ -29,6 +28,7 @@ export default function MapCanvas({
   setZoom,
   isFollowing,
   setIsFollowing,
+  rotation = 0,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -128,18 +128,14 @@ export default function MapCanvas({
           zIndex: 50,
         }}
       >
-        <button
-          style={zoomBtnStyle}
-          onClick={handleZoomIn}
-        >
+        <button style={zoomBtnStyle} onClick={handleZoomIn}>
           +
         </button>
-        <button
-          style={zoomBtnStyle}
-          onClick={handleZoomOut}
-        >
+
+        <button style={zoomBtnStyle} onClick={handleZoomOut}>
           -
         </button>
+
         <button
           style={{ ...zoomBtnStyle, fontSize: "14px" }}
           onClick={handleRecenter}
@@ -199,12 +195,12 @@ export default function MapCanvas({
             </div>
           )}
 
-          {/* Pointer (node-only) */}
+          {/* Pointer */}
           <LivePointer
             x={nodeLockedPos.x}
             y={nodeLockedPos.y}
-            angleDeg={pointerAngle}
             isNavActive={isNavActive}
+            rotation={rotation}
           />
         </div>
       </div>

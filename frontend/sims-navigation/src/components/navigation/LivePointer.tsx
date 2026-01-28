@@ -1,41 +1,57 @@
 type Props = {
   x: number;
   y: number;
-  angleDeg: number;
   isNavActive: boolean;
+  rotation?: number;
 };
 
-export default function LivePointer({ x, y, angleDeg, isNavActive }: Props) {
+export default function LivePointer({ x, y, isNavActive, rotation = 0 }: Props) {
   return (
     <div
       style={{
         position: "absolute",
         left: x,
         top: y,
-        transform: `translate(-50%, -50%) rotate(${angleDeg}deg)`,
-        transition: "transform 0.12s linear, left 0.12s linear, top 0.12s linear",
+        transform: `translate(-50%, -50%)`,
+        transition: "left 0.3s cubic-bezier(0.2, 0, 0.2, 1), top 0.3s cubic-bezier(0.2, 0, 0.2, 1)",
         zIndex: 25,
         pointerEvents: "none",
         opacity: isNavActive ? 1 : 0.7,
       }}
     >
-      {/* Beam */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: "50%",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "120px",
-          height: "160px",
-          background:
-            "linear-gradient(to top, rgba(59,130,246,0.45) 0%, rgba(59,130,246,0) 100%)",
-          clipPath: "polygon(50% 100%, 0% 0%, 100% 0%)",
-          zIndex: 24,
-        }}
-      />
+       {/* Arrow / Beam Indicator */}
+       {isNavActive && (
+        <div
+            style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                width: "40px",
+                height: "40px",
+                transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                transition: "transform 0.15s ease-out",
+                zIndex: 24,
+            }}
+        >
+            {/* The Arrow Shape */}
+            <div
+                style={{
+                    width: "0",
+                    height: "0",
+                    borderLeft: "8px solid transparent",
+                    borderRight: "8px solid transparent",
+                    borderBottom: "24px solid #3B82F6", // Arrow color
+                    position: "absolute",
+                    top: "-28px", // Push it out a bit from center
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    filter: "drop-shadow(0 0 4px rgba(59,130,246,0.6))"
+                }}
+            />
+        </div>
+       )}
 
-      {/* Dot */}
+      {/* Center Dot */}
       <div
         style={{
           width: "18px",
@@ -44,28 +60,10 @@ export default function LivePointer({ x, y, angleDeg, isNavActive }: Props) {
           background: "#3B82F6",
           border: "3px solid white",
           boxShadow: "0 0 15px rgba(59,130,246,0.5)",
-          transform: "translate(-50%, -50%)",
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          zIndex: 26,
+          position: 'relative',
+          zIndex: 26
         }}
-      >
-        {/* Arrow */}
-        <div
-          style={{
-            width: 0,
-            height: 0,
-            borderLeft: "5px solid transparent",
-            borderRight: "5px solid transparent",
-            borderBottom: "8px solid white",
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -80%)",
-          }}
-        />
-      </div>
+      />
     </div>
   );
 }
