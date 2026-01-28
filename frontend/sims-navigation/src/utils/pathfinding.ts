@@ -5,7 +5,7 @@ interface Graph {
 }
 
 export const findShortestPath = (
-startNodeId: string, endNodeId: string, nodeMap: Record<string, { x: number; y: number; type: string; }>): string[] => {
+startNodeId: string, endNodeId: string, _nodeMap: Record<string, { x: number; y: number; type: string; }>): string[] => {
   const nodes = testData.nodes as Record<string, { x: number; y: number; type: string }>;
   const edges = testData.edges as { from: string; to: string }[];
 

@@ -17,7 +17,7 @@ const HEADING_SMOOTHING = 0.1;
 type XY = { x: number; y: number };
 
 export const usePDR = (
-initialX: number, initialY: number, isActive: boolean, routePath: string[], nodeMap: Record<string, { x: number; y: number; type: string; }>, snapFn?: (x: number, y: number, prev?: XY) => XY) => {
+initialX: number, initialY: number, isActive: boolean, _routePath: string[], _nodeMap: Record<string, { x: number; y: number; type: string; }>, snapFn?: (x: number, y: number, prev?: XY) => XY) => {
   const [rawPos, setRawPos] = useState<XY>({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
 
