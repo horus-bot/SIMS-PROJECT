@@ -1,7 +1,7 @@
 import { Routes, Route } from "react-router-dom"
 import Landing from "./pages/landing"
 import Navigation from "./pages/navigation"
-import MapView from "./pages/Map-view"
+import MapView from "./pages/MapVIew"
 import QRGenerator from "./pages/qrAdmin"
 import Test from "./pages/test"
 

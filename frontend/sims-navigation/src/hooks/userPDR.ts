@@ -10,13 +10,17 @@ const STRIDE_MIN_PX = STRIDE_MIN_M * PIXELS_PER_METER;
 const STRIDE_MAX_PX = STRIDE_MAX_M * PIXELS_PER_METER;
 
 const STEP_COOLDOWN_MS = 320;
-const PEAK_THRESHOLD = 1.15;
+
+// ✅ Better step detection params
+const GRAVITY = 9.81;
+const STEP_MAG_THRESHOLD = 1.25; // how hard the step must be
+const MAG_ALPHA = 0.85; // smoothing (higher = smoother)
 
 // ✅ heading stability controls
-const HEADING_SMOOTHING = 0.05; // smaller = more stable
-const HEADING_DEADZONE_DEG = 1.2; // ignore tiny jitter
-const HEADING_MAX_TURN_DEG = 6; // max turn per update
-const HEADING_THROTTLE_MS = 60; // reduce heading update spam
+const HEADING_SMOOTHING = 0.05;
+const HEADING_DEADZONE_DEG = 1.2;
+const HEADING_MAX_TURN_DEG = 6;
+const HEADING_THROTTLE_MS = 60;
 
 type XY = { x: number; y: number };
 
@@ -33,8 +37,10 @@ export const usePDR = (
 
   // Step detection
   const lastStepAt = useRef(0);
-  const magSmooth = useRef(9.8);
-  const prevMagSmooth = useRef(9.8);
+
+  // ✅ smooth magnitude + peak detect
+  const magSmooth = useRef(GRAVITY);
+  const lastMag = useRef(GRAVITY);
 
   // Heading
   const headingRef = useRef(0);
@@ -56,36 +62,41 @@ export const usePDR = (
     if (!isActive) return;
 
     // ======================
-    // STEP DETECTION
+    // STEP DETECTION (stable)
     // ======================
     const handleMotion = (e: DeviceMotionEvent) => {
       const acc = e.accelerationIncludingGravity;
       if (!acc) return;
 
-      const ax = acc.x || 0;
-      const ay = acc.y || 0;
-      const az = acc.z || 0;
+      const ax = acc.x ?? 0;
+      const ay = acc.y ?? 0;
+      const az = acc.z ?? 0;
 
       const mag = Math.sqrt(ax * ax + ay * ay + az * az);
 
-      prevMagSmooth.current = magSmooth.current;
-      magSmooth.current = magSmooth.current * 0.8 + mag * 0.2;
+      // smooth the magnitude
+      magSmooth.current = MAG_ALPHA * magSmooth.current + (1 - MAG_ALPHA) * mag;
 
-      const diff = magSmooth.current - prevMagSmooth.current;
+      // remove gravity baseline
+      const magWithoutGravity = Math.abs(magSmooth.current - GRAVITY);
 
       const now = Date.now();
       if (now - lastStepAt.current < STEP_COOLDOWN_MS) return;
 
-      if (diff > PEAK_THRESHOLD) {
+      // ✅ detect rising peak (step)
+      const rising = magSmooth.current > lastMag.current;
+
+      if (rising && magWithoutGravity > STEP_MAG_THRESHOLD) {
         lastStepAt.current = now;
 
         setRawPos((prev) => {
           const rad = (headingRef.current * Math.PI) / 180;
 
-          // dynamic stride
+          // dynamic stride based on step intensity
+          const intensity = Math.min(3, Math.max(1, magWithoutGravity));
           const stridePx = Math.min(
             STRIDE_MAX_PX,
-            Math.max(STRIDE_MIN_PX, diff * 22)
+            Math.max(STRIDE_MIN_PX, intensity * (STRIDE_MIN_PX * 1.15))
           );
 
           const next = {
@@ -93,12 +104,13 @@ export const usePDR = (
             y: prev.y - Math.cos(rad) * stridePx,
           };
 
-          // ✅ snap / reject step (prevents wall cutting)
           return snapFn ? snapFn(next.x, next.y, prev) : next;
         });
 
         if (window.navigator.vibrate) window.navigator.vibrate(30);
       }
+
+      lastMag.current = magSmooth.current;
     };
 
     // ======================
@@ -107,68 +119,65 @@ export const usePDR = (
     const handleOrientation = (e: any) => {
       let compassHeading = 0;
 
-      // iOS Safari
       if (e.webkitCompassHeading != null) {
         compassHeading = e.webkitCompassHeading;
-      }
-      // Android / others
-      else if (e.alpha != null) {
+      } else if (e.alpha != null) {
         compassHeading = 360 - e.alpha;
       } else {
         return;
       }
 
-      // ✅ throttle heading updates (reduces jitter spam)
       const now = Date.now();
       if (now - lastHeadingUpdate.current < HEADING_THROTTLE_MS) return;
       lastHeadingUpdate.current = now;
 
-      // ✅ lock starting direction
       if (baseHeading.current === null) {
         baseHeading.current = compassHeading;
       }
 
-      // ✅ correct relative heading (NO +180)
       const relative = (compassHeading - baseHeading.current + 360) % 360;
 
       const current = headingRef.current;
-
-      // shortest rotation direction
       const rawDiff = ((relative - current + 540) % 360) - 180;
 
-      // ✅ deadzone: ignore tiny shakes
       if (Math.abs(rawDiff) < HEADING_DEADZONE_DEG) return;
 
-      // ✅ clamp: limit max turn speed per update
       const clampedDiff = Math.max(
         -HEADING_MAX_TURN_DEG,
         Math.min(HEADING_MAX_TURN_DEG, rawDiff)
       );
 
-      // ✅ smoothing
       const smoothed = (current + clampedDiff * HEADING_SMOOTHING + 360) % 360;
 
       headingRef.current = smoothed;
       setHeading(smoothed);
     };
 
-    window.addEventListener("devicemotion", handleMotion);
+    // ✅ passive helps some browsers performance + reliability
+    window.addEventListener("devicemotion", handleMotion, { passive: true });
 
     const win = window as any;
     const supportsAbsolute = "ondeviceorientationabsolute" in win;
 
     if (supportsAbsolute) {
-      win.addEventListener("deviceorientationabsolute", handleOrientation);
+      win.addEventListener("deviceorientationabsolute", handleOrientation, {
+        passive: true,
+      });
     } else {
-      win.addEventListener("deviceorientation", handleOrientation);
+      win.addEventListener("deviceorientation", handleOrientation, {
+        passive: true,
+      });
     }
 
     return () => {
-      window.removeEventListener("devicemotion", handleMotion);
+      window.removeEventListener("devicemotion", handleMotion as any);
       if (supportsAbsolute) {
-        win.removeEventListener("deviceorientationabsolute", handleOrientation);
+        win.removeEventListener(
+          "deviceorientationabsolute",
+          handleOrientation as any
+        );
       } else {
-        win.removeEventListener("deviceorientation", handleOrientation);
+        win.removeEventListener("deviceorientation", handleOrientation as any);
       }
     };
   }, [isActive, snapFn]);
