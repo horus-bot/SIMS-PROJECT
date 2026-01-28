@@ -8,7 +8,7 @@ type Params = {
   routePath: string[]; // List of node IDs
   nodeMap: Record<string, Node>;
   rawPos: XY; // The drifting PDR position (from usePDR)
-  heading: number; // User's phone heading (for future turn logic)
+  // heading removed as it was unused
   forceSetPos: (x: number, y: number) => void; 
 };
 
@@ -26,7 +26,6 @@ export function useCRFNavigation({
   routePath,
   nodeMap,
   rawPos,
-  heading,
    forceSetPos
 }: Params) {
   // We track which segment of the route we are on

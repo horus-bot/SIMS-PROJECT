@@ -168,12 +168,11 @@ export default function MapView() {
   );
 
   // 2. CRF / Map-Matching (Locks PDR to Route)
-  const { correctedPos, currentNode, nextNode, turnDetected, confirmTurn, segmentIndex } = useCRFNavigation({
+  const { correctedPos, nextNode, turnDetected, confirmTurn, segmentIndex } = useCRFNavigation({
     isNavActive,
     routePath,
     nodeMap,
     rawPos,
-    heading,
     forceSetPos,
   });
 
