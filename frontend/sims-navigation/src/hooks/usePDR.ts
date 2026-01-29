@@ -16,6 +16,8 @@ let gravity = { x: 0, y: 0, z: 0 };
 export const usePDR = (initialX: number, initialY: number, isActive: boolean, initialMapAngle: number = 0, routePath: string[] = [], isPaused: boolean = false) => {
   const [rawPos, setRawPos] = useState({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(0); // m/s
+  const speedResetTimer = useRef<NodeJS.Timeout | null>(null);
   
   // This ref stores the difference between physical North and Map North
   const calibrationOffset = useRef<number | null>(null);
@@ -78,6 +80,14 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
              
              // Average for smoothness
              currentStride.current = strideHistory.current.reduce((a, b) => a + b, 0) / strideHistory.current.length;
+             
+             // Calculate Speed (m/s)
+             const speed = currentStride.current * freq;
+             setCurrentSpeed(speed);
+
+             // Reset speed if no step for 2 seconds
+             if (speedResetTimer.current) clearTimeout(speedResetTimer.current);
+             speedResetTimer.current = setTimeout(() => setCurrentSpeed(0), 2000);
         }
 
         // Use current smoothed heading for step direction
@@ -211,8 +221,9 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
     return () => {
       window.removeEventListener('devicemotion', handleMotion);
       window.removeEventListener('deviceorientation', handleOrientation);
+      if (speedResetTimer.current) clearTimeout(speedResetTimer.current);
     };
   }, [isActive, initialMapAngle]);
 
-  return { rawPos, heading, forceSetPos };
+  return { rawPos, heading, forceSetPos, currentSpeed };
 };

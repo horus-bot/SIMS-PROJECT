@@ -284,36 +284,48 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: `0 4px 12px rgba(0,0,0, 0.25)`,
   },
 
-  // Pointer movement pad
-  pad: {
-    display: "grid",
-    gridTemplateColumns: "52px 52px 52px",
-    gridTemplateRows: "52px 52px 52px",
-    gap: "10px",
-    justifyContent: "center",
+  // Navigation Panel
+  navPanel: {
+    display: "flex", 
+    flexDirection: "row",
     alignItems: "center",
-    padding: "12px",
+    gap: "16px",
+    padding: "16px", 
+    backgroundColor: colors.lightBlue,
     borderRadius: "16px",
-    background: colors.lightBlue,
-    border: `1px solid ${colors.accent}`,
+    border: `1px solid ${colors.secondary}`,
   },
-  padBtn: {
-    width: "52px",
-    height: "52px",
-    borderRadius: "14px",
-    border: `1px solid rgba(30,41,59,0.15)`,
-    background: colors.surface,
-    cursor: "pointer",
-    fontSize: "18px",
-    fontWeight: 900,
+  
+  navIconBox: {
+    width: "56px", 
+    height: "56px",
+    borderRadius: "12px",
+    backgroundColor: colors.surface,
     color: colors.primary,
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    fontSize: "32px", 
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    userSelect: "none",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
   },
-  padEmpty: { width: "52px", height: "52px" },
+
+  navInfoBox: {
+     display: "flex",
+     flexDirection: "column",
+     gap: "4px",
+     flex: 1,
+  },
+  navMainText: {
+     fontSize: "18px",
+     fontWeight: 700,
+     color: colors.primaryDark,
+  },
+  navSubText: {
+     fontSize: "14px",
+     color: colors.textSecondary, 
+     display: "flex", 
+     gap: "12px"
+  },
 
   pointerDot: {
     position: "absolute",
@@ -401,7 +413,7 @@ const MapView = () => {
 
   // 1. PDR HOOK (Integrated with initialMapAngle = 0 for POC logic)
   const [isPaused, setIsPaused] = useState(false);
-  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
+  const { rawPos, heading, forceSetPos, currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
 
   // Turn Detection Logic
   const [showTurnPopup, setShowTurnPopup] = useState(false);
@@ -437,6 +449,74 @@ const MapView = () => {
   
   const snappedPos = { x: snapResult.x, y: snapResult.y };
 
+  // --- NAVIGATION STATE CALCULATION ---
+  const navState = useMemo(() => {
+    if (!routePath.length) return { turnType: 'straight', distToTurn: 0, totalRem: 0 };
+
+    // 1. Find the next turn node index
+    let turnType = 'straight';
+    let distToTurn = 0;
+
+    // Find closest node index on route
+    let currentIdx = 0;
+    let minD = Infinity;
+    routePath.forEach((id, idx) => {
+       const n = nodeMap[id];
+       const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
+       if (d < minD) { minD = d; currentIdx = idx; }
+    });
+
+    // Check upcoming nodes for turns
+    for (let i = currentIdx; i < routePath.length - 1; i++) {
+       const curr = nodeMap[routePath[i]];
+       const next = nodeMap[routePath[i+1]];
+       const after = routePath[i+2] ? nodeMap[routePath[i+2]] : null;
+       
+       distToTurn += Math.hypot(curr.x - next.x, curr.y - next.y);
+
+       if (after) {
+          // Check angle
+          const angle1 = Math.atan2(next.y - curr.y, next.x - curr.x);
+          const angle2 = Math.atan2(after.y - next.y, after.x - next.x);
+          let diff = angle2 - angle1;
+          
+          // Normalize to [-PI, PI]
+          while (diff <= -Math.PI) diff += 2*Math.PI;
+          while (diff > Math.PI) diff -= 2*Math.PI;
+
+          if (Math.abs(diff) > 0.5) { // significant turn
+             turnType = diff > 0 ? 'right' : 'left';
+             break;
+          }
+       }
+    }
+
+    if (currentIdx >= routePath.length - 1) turnType = 'finish';
+
+    // Calculate total remaining distance
+    let totalRem = 0;
+    for(let i=currentIdx; i<routePath.length-1; i++){
+        const n1 = nodeMap[routePath[i]];
+        const n2 = nodeMap[routePath[i+1]];
+        totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
+    }
+    
+    // Adjust distToTurn to be from current position, not current node
+    // Simple approximation: subtract distance from current pos to current node? 
+    // Better: project pos onto segment. For now, this is "good enough" for UI POC.
+    // const distFromNode = Math.hypot(snappedPos.x - nodeMap[routePath[currentIdx]].x, snappedPos.y - nodeMap[routePath[currentIdx]].y);
+    // If we passed the node, we might need to subtract? Let's keep it simple.
+    
+    // Convert pixels to meters (approx 1px = 2cm, so 50px = 1m)
+    const PIXELS_PER_METER = 50; 
+
+    return {
+       turnType,
+       distToTurn: Math.max(0, distToTurn / PIXELS_PER_METER),
+       totalRem: Math.max(0, totalRem / PIXELS_PER_METER)
+    };
+  }, [snappedPos, routePath, nodeMap]);
+
   // Calculate deviation - Now strictly based on whether mapMatching snapped to route or not
   useEffect(() => {
      if (isNavActive) {
@@ -452,7 +532,7 @@ const MapView = () => {
         const node = nodeMap[nodeId];
         const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
         
-        if (dist < 80) { // Trigger within 80px (approx 1.5m)
+        if (dist < 80 && isDeviated) { // Only ask when deviated
             setIsPaused(true);
             setPendingTurnNode({ id: nodeId, ...node });
             setShowTurnPopup(true);
@@ -460,7 +540,7 @@ const MapView = () => {
             break; 
         }
     }
-  }, [snappedPos, isNavActive, isPaused, turnNodes, nodeMap]);
+  }, [snappedPos, isNavActive, isPaused, turnNodes, nodeMap, isDeviated]);
 
   const handleConfirmTurn = () => {
     if (pendingTurnNode) {
@@ -524,24 +604,6 @@ const MapView = () => {
     // Reset path on start
     setActualPath([]);
     setIsDeviated(false);
-  };
-
-  // ✅ Step-by-Step "Play" Feature
-  const handlePlayNextNode = () => {
-    let closestIdx = 0;
-    let minD = Infinity;
-    
-    routePath.forEach((id, idx) => {
-      const n = nodeMap[id];
-      const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
-      if (d < minD) { minD = d; closestIdx = idx; }
-    });
-
-    const nextNodeId = routePath[closestIdx + 1];
-    if (nextNodeId) {
-      const nextNode = nodeMap[nextNodeId];
-      forceSetPos(nextNode.x, nextNode.y);
-    }
   };
 
   // Camera follow logic
@@ -659,24 +721,32 @@ const MapView = () => {
             )}
           </div>
 
-          <div style={styles.pad}>
-            <div style={styles.padEmpty} />
-            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y - 50)}>⬆</button>
-            <div style={styles.padEmpty} />
+          {/* Navigation Dashboard */}
+          {isNavActive && (
+            <div style={styles.navPanel}>
+              {/* Direction Icon */}
+              <div style={styles.navIconBox}>
+                  {navState.turnType === 'left' ? '↰' : 
+                   navState.turnType === 'right' ? '↱' : 
+                   navState.turnType === 'finish' ? '🏁' : '↑'}
+              </div>
 
-            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x - 50, rawPos.y)}>⬅</button>
-            
-            <button 
-              style={{...styles.padBtn, background: colors.primary, color: "white"}} 
-              onClick={handlePlayNextNode}
-            >▶</button>
-            
-            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x + 50, rawPos.y)}>➡</button>
-
-            <div style={styles.padEmpty} />
-            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y + 50)}>⬇</button>
-            <div style={styles.padEmpty} />
-          </div>
+              {/* Metrics */}
+              <div style={styles.navInfoBox}>
+                  <div style={styles.navMainText}>
+                    {navState.turnType === 'straight' 
+                      ? "Go Straight" 
+                      : navState.turnType === 'finish' 
+                      ? "Arrived at destination"
+                      : `Turn ${navState.turnType === 'left' ? 'Left' : 'Right'} in ${navState.distToTurn.toFixed(0)}m`}
+                  </div>
+                  <div style={styles.navSubText}>
+                    <span>🏃 {(currentSpeed * 3.6).toFixed(1)} km/h</span> {/* m/s to km/h */}
+                    <span>📍 {navState.totalRem.toFixed(0)}m left</span>
+                  </div>
+              </div>
+            </div>
+          )}
 
           <div style={styles.actionsRow}>
             <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
