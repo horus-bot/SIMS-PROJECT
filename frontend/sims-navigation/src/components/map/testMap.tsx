@@ -3,9 +3,11 @@ import testData from "../../data/test_1.json"; // Direct import for node coordin
 
 interface TestMapProps {
   routePath?: string[]; // Array of node IDs representing the path
+  actualPath?: {x: number, y: number}[]; // Actual path taken
+  isDeviated?: boolean; // Whether deviated from route
 }
 
-const TestMap: React.FC<TestMapProps> = ({ routePath = [] }) => {
+const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDeviated = false }) => {
   // Convert node IDs in routePath to coordinate points string for polyline
   const polylinePoints = useMemo(() => {
     if (!routePath || routePath.length < 2) return "";
@@ -21,6 +23,12 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [] }) => {
       .filter(p => p !== null)
       .join(" ");
   }, [routePath]);
+
+  // Convert actual path to polyline points
+  const actualPolylinePoints = useMemo(() => {
+    if (!actualPath || actualPath.length < 2) return "";
+    return actualPath.map(p => `${p.x},${p.y}`).join(" ");
+  }, [actualPath]);
 
   return (
     <div style={{ position: "relative", width: "4101px", height: "3025px" }}>
@@ -46,6 +54,19 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [] }) => {
             fill="none"
             stroke="#3B82F6" // Blue path color
             strokeWidth="12"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.25))" }}
+          />
+        )}
+
+        {/* Draw actual path in red if deviated */}
+        {isDeviated && actualPolylinePoints && (
+          <polyline
+            points={actualPolylinePoints}
+            fill="none"
+            stroke="#EF4444" // Red for deviated path
+            strokeWidth="8"
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.25))" }}

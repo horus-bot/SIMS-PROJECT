@@ -4,14 +4,23 @@ const PIXELS_PER_METER = 49;
 const ALLOWED_DEVIATION_M = 0.6;
 const ALLOWED_DEVIATION_PX = ALLOWED_DEVIATION_M * PIXELS_PER_METER; // ~29.4px
 
-export const applyCRFConstraints = (x: number, y: number) => {
+export const applyCRFConstraints = (x: number, y: number, routePath: string[] = []) => {
   const nodes = testData.nodes as any;
   const edges = testData.edges;
 
-  let minDistance = Infinity;
-  let closestPointInBuilding = { x, y };
+  let minDistanceAll = Infinity;
+  let closestPointAll = { x, y };
 
-  // 1. Scan EVERY edge in the building to find the nearest "tunnel"
+  let minDistanceRoute = Infinity;
+  let closestPointRoute = { x, y };
+
+  // Get route edges
+  const routeEdges: { from: string; to: string; }[] = [];
+  for (let i = 0; i < routePath.length - 1; i++) {
+    routeEdges.push({ from: routePath[i], to: routePath[i + 1] });
+  }
+
+  // Scan ALL edges
   edges.forEach((edge) => {
     const p1 = nodes[edge.from];
     const p2 = nodes[edge.to];
@@ -29,25 +38,23 @@ export const applyCRFConstraints = (x: number, y: number) => {
     const projY = p1.y + t * dy;
     const dist = Math.hypot(x - projX, y - projY);
 
-    if (dist < minDistance) {
-      minDistance = dist;
-      closestPointInBuilding = { x: projX, y: projY };
+    if (dist < minDistanceAll) {
+      minDistanceAll = dist;
+      closestPointAll = { x: projX, y: projY };
+    }
+
+    // Check if this edge is in route
+    const isRouteEdge = routeEdges.some(re => (re.from === edge.from && re.to === edge.to) || (re.from === edge.to && re.to === edge.from));
+    if (isRouteEdge && dist < minDistanceRoute) {
+      minDistanceRoute = dist;
+      closestPointRoute = { x: projX, y: projY };
     }
   });
 
-  // 2. "Tunnel" Logic:
-  // If we are within 0.6m of ANY legal hallway, let the user move freely.
-  if (minDistance <= ALLOWED_DEVIATION_PX) {
-    return { x, y }; 
+  // Favor route: if route distance <= 2 * all distance, use route
+  if (minDistanceRoute <= minDistanceAll * 2) {
+    return closestPointRoute;
+  } else {
+    return closestPointAll;
   }
-
-  // 3. Wall Logic:
-  // If they try to walk through a wall (exit the tunnel), 
-  // push them back to the edge of the nearest legal hallway.
-  const angle = Math.atan2(y - closestPointInBuilding.y, x - closestPointInBuilding.x);
-  
-  return {
-    x: closestPointInBuilding.x + Math.cos(angle) * ALLOWED_DEVIATION_PX,
-    y: closestPointInBuilding.y + Math.sin(angle) * ALLOWED_DEVIATION_PX
-  };
 };

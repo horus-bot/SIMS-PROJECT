@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import TestMap from "../components/map/testMap"; // ✅ USE YOUR EXISTING TESTMAP
+import TestMap from "../components/map/testMap"; 
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/usePDR";
@@ -296,6 +296,30 @@ const styles: Record<string, CSSProperties> = {
 
 type NodeType = { x: number; y: number; type: string };
 
+// Function to compute distance from point to polyline
+const distanceToPolyline = (px: number, py: number, points: {x: number, y: number}[]) => {
+  let minDist = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const dist = distanceToLineSegment(px, py, p1.x, p1.y, p2.x, p2.y);
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
+};
+
+const distanceToLineSegment = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return Math.hypot(px - projX, py - projY);
+};
+
 // ✅ map coordinate system from your svg viewBox
 // const MAP_W = 4101;
 // const MAP_H = 3025;
@@ -323,14 +347,46 @@ const MapView = () => {
     return findShortestPath(originId, destId, nodeMap);
   }, [originId, destId, nodeMap]);
 
+  // Reset path when route changes
+  useEffect(() => {
+    setActualPath([]);
+    setIsDeviated(false);
+  }, [routePath]);
+
+  // Route points for deviation check
+  const routePoints = useMemo(() => {
+    return routePath.map(id => nodeMap[id]).filter(n => n);
+  }, [routePath, nodeMap]);
+
+  // States for actual path and deviation
+  const [actualPath, setActualPath] = useState<{x: number, y: number}[]>([]);
+  const [isDeviated, setIsDeviated] = useState(false);
+
   // 1. PDR HOOK (Integrated with initialMapAngle = 0 for POC logic)
-  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0);
+  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath);
 
   // 2. GLOBAL TUNNEL CONSTRAINTS (Updated: Removed routePath)
   // This now checks against ALL edges in test_1.json automatically
   const snappedPos = useMemo(() => {
-    return applyCRFConstraints(rawPos.x, rawPos.y);
-  }, [rawPos]); // Only re-run when you move, using the global map edges
+    return applyCRFConstraints(rawPos.x, rawPos.y, routePath);
+  }, [rawPos, routePath]); // Only re-run when you move, using the global map edges
+
+  // Track actual path and detect deviation
+  useEffect(() => {
+    if (!isNavActive || routePoints.length < 2) return;
+
+    setActualPath(prev => {
+      const last = prev[prev.length - 1];
+      if (!last || Math.hypot(snappedPos.x - last.x, snappedPos.y - last.y) > 10) { // Add if moved >10px
+        return [...prev, snappedPos];
+      }
+      return prev;
+    });
+
+    // Check deviation: if distance to route > 50px, deviated
+    const dist = distanceToPolyline(snappedPos.x, snappedPos.y, routePoints);
+    setIsDeviated(dist > 50);
+  }, [snappedPos, isNavActive, routePoints]);
 
   // Manual Permission Trigger
   const startNavigation = async () => {
@@ -344,6 +400,9 @@ const MapView = () => {
     } else {
       setIsNavActive(true);
     }
+    // Reset path on start
+    setActualPath([]);
+    setIsDeviated(false);
   };
 
   // ✅ Step-by-Step "Play" Feature
@@ -399,7 +458,7 @@ const MapView = () => {
             ...styles.camera,
             transform: `translate(${camera.x}px, ${camera.y}px) scale(${zoom})`,
           }}>
-            <TestMap routePath={routePath} />
+            <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
 
             {/* LIVE POINTER WITH DIRECTION OF SIGHT (Rotates based on calibrated heading) */}
             <div style={{
