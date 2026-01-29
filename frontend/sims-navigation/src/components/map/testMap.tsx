@@ -60,15 +60,16 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
           />
         )}
 
-        {/* Draw actual path in red if deviated */}
-        {isDeviated && actualPolylinePoints && (
+        {/* Draw actual path (Green normally, Red/Dashed if deviated) */}
+        {actualPolylinePoints && (
           <polyline
             points={actualPolylinePoints}
             fill="none"
-            stroke="#EF4444" // Red for deviated path
+            stroke={isDeviated ? "#EF4444" : "#10B981"} 
             strokeWidth="8"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeDasharray={isDeviated ? "12, 12" : "0"}
             style={{ filter: "drop-shadow(0px 4px 4px rgba(0,0,0,0.25))" }}
           />
         )}

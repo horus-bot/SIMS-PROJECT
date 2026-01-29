@@ -429,9 +429,18 @@ const MapView = () => {
 
   // 2. GLOBAL TUNNEL CONSTRAINTS (Updated: Removed routePath)
   // This now checks against ALL edges in test_1.json automatically
-  const snappedPos = useMemo(() => {
+  const snapResult = useMemo(() => {
     return applyCRFConstraints(rawPos.x, rawPos.y, routePath);
-  }, [rawPos, routePath]); // Only re-run when you move, using the global map edges
+  }, [rawPos, routePath]);
+  
+  const snappedPos = { x: snapResult.x, y: snapResult.y };
+
+  // Calculate deviation - Now strictly based on whether mapMatching snapped to route or not
+  useEffect(() => {
+     if (isNavActive) {
+         setIsDeviated(!snapResult.isOnRoute);
+     }
+  }, [snapResult, isNavActive]);
 
   useEffect(() => {
     if (!isNavActive || isPaused) return;
@@ -480,9 +489,24 @@ const MapView = () => {
 
     // Check deviation: if distance to route > 50px, deviated
     const dist = distanceToPolyline(snappedPos.x, snappedPos.y, routePoints);
-    setIsDeviated(dist > 50);
+    // Deprecated: setIsDeviated(dist > 50);
   }, [snappedPos, isNavActive, routePoints]);
 
+  const handleReroute = () => {
+    // 1. Find the closest node to current (deviated) pos
+    let minD = Infinity;
+    let closestId = "";
+    Object.entries(nodeMap).forEach(([id, node]) => {
+        const d = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
+        if (d < minD) { minD = d; closestId = id; }
+    });
+
+    if (closestId) {
+        // 2. Update origin to this new node (navigates to same page with new params)
+        navigate(`/map?origin=${closestId}&dest=${destId}`);
+    }
+  };
+  
   // Manual Permission Trigger
   const startNavigation = async () => {
     if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
@@ -596,6 +620,28 @@ const MapView = () => {
                         <button style={{...styles.btnPrimary, minWidth: '80px', flex:1}} onClick={handleConfirmTurn}>Yes (Align)</button>
                     </div>
                 </div>
+            </div>
+        )}
+
+        {/* Deviation Warning Overlay */}
+        {isDeviated && (
+            <div style={{
+                position: "absolute", top: "100px", left: "50%", transform: "translateX(-50%)", 
+                background: "#EF4444", color: "white", padding: "12px 24px", 
+                borderRadius: "30px", fontWeight: "bold", zIndex: 60,
+                boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+                display: "flex", alignItems: "center", gap: "10px"
+            }}>
+                <span>⚠️ Off Route!</span>
+                <button 
+                  onClick={handleReroute}
+                  style={{
+                      background: "white", color: "#EF4444", border: "none", 
+                      padding: "6px 14px", borderRadius: "16px", fontWeight: "bold", cursor: "pointer"
+                  }}
+                >
+                  Reroute ⟳
+                </button>
             </div>
         )}
 

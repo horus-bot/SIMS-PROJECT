@@ -51,10 +51,15 @@ export const applyCRFConstraints = (x: number, y: number, routePath: string[] = 
     }
   });
 
-  // Favor route: if route distance <= 2 * all distance, use route
-  if (minDistanceRoute <= minDistanceAll * 2) {
-    return closestPointRoute;
+  // Return object with metadata
+  // Favor route: if route distance <= 2.5x all distance (slightly looser), use route
+  // Otherwise, user has genuinely DEVIATED to another valid path.
+  
+  if (minDistanceRoute !== Infinity && minDistanceRoute <= minDistanceAll * 2.5) {
+    return { ...closestPointRoute, isOnRoute: true };
   } else {
-    return closestPointAll;
+    // If closestPointAll is basically the same as input, it means no edge was close? 
+    // But typically minDistanceAll will be finite if map has edges.
+    return { ...closestPointAll, isOnRoute: false };
   }
 };
