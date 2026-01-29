@@ -34,7 +34,7 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
     <div style={{ position: "relative", width: "4101px", height: "3025px" }}>
       {/* 1. Base Map Image */}
       <img
-        src="/DemoMap.svg" // Changed from /assets/test_1.svg to /DemoMap.svg
+        src="/2nd_Floor.svg" // Changed from /assets/test_1.svg to /DemoMap.svg
         alt="Indoor Map"
         width={4101}
         height={3025}
