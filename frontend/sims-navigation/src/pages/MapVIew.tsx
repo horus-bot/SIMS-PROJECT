@@ -37,9 +37,9 @@ const styles: Record<string, CSSProperties> = {
     background: colors.primary,
     fontFamily:
       '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    overflow: "hidden",
-    position: "fixed",
-    inset: 0,
+    overflow: "auto",
+    position: "relative",
+    inset: "initial",
   },
   header: {
     background: colors.surface,
@@ -138,6 +138,41 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
     boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
     userSelect: "none",
+  },
+
+  popupOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+  },
+  popup: {
+    background: "white",
+    padding: "24px",
+    borderRadius: "16px",
+    width: "85%",
+    maxWidth: "320px",
+    textAlign: "center",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+  },
+  popupTitle: {
+    fontSize: "18px",
+    fontWeight: "bold",
+    marginBottom: "12px",
+    color: "#1E293B",
+  },
+  popupText: {
+    fontSize: "14px",
+    color: "#64748B",
+    marginBottom: "20px",
+  },
+  popupButtons: {
+    display: "flex",
+    gap: "12px",
+    justifyContent: "center",
   },
 
   bottomSheet: {
@@ -363,13 +398,73 @@ const MapView = () => {
   const [isDeviated, setIsDeviated] = useState(false);
 
   // 1. PDR HOOK (Integrated with initialMapAngle = 0 for POC logic)
-  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath);
+  const [isPaused, setIsPaused] = useState(false);
+  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
+
+  // Turn Detection Logic
+  const [showTurnPopup, setShowTurnPopup] = useState(false);
+  const [pendingTurnNode, setPendingTurnNode] = useState<{id: string, x: number, y: number} | null>(null);
+  const checkedTurns = useRef<Set<string>>(new Set());
+
+  const turnNodes = useMemo(() => {
+    const turns: string[] = [];
+    if (routePath.length < 3) return turns;
+    for (let i = 1; i < routePath.length - 1; i++) {
+        const prev = nodeMap[routePath[i - 1]];
+        const curr = nodeMap[routePath[i]];
+        const next = nodeMap[routePath[i + 1]];
+        if (!prev || !curr || !next) continue;
+
+        const angle1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+        const angle2 = Math.atan2(next.y - curr.y, next.x - curr.x);
+        let diff = Math.abs(angle1 - angle2);
+        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+
+        if (diff > 0.6) { // > ~35 degrees
+            turns.push(routePath[i]);
+        }
+    }
+    return turns;
+  }, [routePath, nodeMap]);
 
   // 2. GLOBAL TUNNEL CONSTRAINTS (Updated: Removed routePath)
   // This now checks against ALL edges in test_1.json automatically
   const snappedPos = useMemo(() => {
     return applyCRFConstraints(rawPos.x, rawPos.y, routePath);
   }, [rawPos, routePath]); // Only re-run when you move, using the global map edges
+
+  useEffect(() => {
+    if (!isNavActive || isPaused) return;
+
+    for (const nodeId of turnNodes) {
+        if (checkedTurns.current.has(nodeId)) continue;
+        const node = nodeMap[nodeId];
+        const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
+        
+        if (dist < 80) { // Trigger within 80px (approx 1.5m)
+            setIsPaused(true);
+            setPendingTurnNode({ id: nodeId, ...node });
+            setShowTurnPopup(true);
+            checkedTurns.current.add(nodeId);
+            break; 
+        }
+    }
+  }, [snappedPos, isNavActive, isPaused, turnNodes, nodeMap]);
+
+  const handleConfirmTurn = () => {
+    if (pendingTurnNode) {
+        forceSetPos(pendingTurnNode.x, pendingTurnNode.y);
+    }
+    setShowTurnPopup(false);
+    setIsPaused(false);
+    setPendingTurnNode(null);
+  };
+
+  const handleSkipTurn = () => {
+    setShowTurnPopup(false);
+    setIsPaused(false);
+    setPendingTurnNode(null);
+  };
 
   // Track actual path and detect deviation
   useEffect(() => {
@@ -460,57 +555,49 @@ const MapView = () => {
           }}>
             <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
 
-            {/* LIVE POINTER WITH DIRECTION OF SIGHT (Rotates based on calibrated heading) */}
+            {/* NEW POINTER */}
             <div style={{
               position: "absolute",
               left: snappedPos.x,
               top: snappedPos.y,
               transform: `translate(-50%, -50%) rotate(${heading}deg)`,
-              transition: 'all 0.2s linear',
-              zIndex: 25,
+              transition: 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)', 
+              zIndex: 30,
               pointerEvents: "none",
             }}>
-              {/* 1. The Vision Beam (Triangle) */}
-              <div style={{
-                position: "absolute",
-                bottom: "50%",
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: "120px",
-                height: "160px",
-                background: "linear-gradient(to top, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 100%)",
-                clipPath: "polygon(50% 100%, 0% 0%, 100% 0%)",
-                zIndex: 24,
-              }} />
-
-              {/* 2. The Main User Dot */}
-              <div style={{
-                ...styles.pointerDot,
-                position: "relative",
-                left: 0,
-                top: 0,
-                transform: "translate(-50%, -50%)",
-                background: '#3B82F6',
-                border: "3px solid white",
-                boxShadow: "0 0 15px rgba(59, 130, 246, 0.5)",
-                zIndex: 26,
-              }}>
-                {/* 3. Tiny Directional Arrow inside dot */}
-                <div style={{
-                  width: 0,
-                  height: 0,
-                  borderLeft: "5px solid transparent",
-                  borderRight: "5px solid transparent",
-                  borderBottom: "8px solid white",
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -80%)", 
-                }} />
-              </div>
+                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   {/* Arrow Points UP by default (0 deg) */}
+                   <path d="M50 10 L80 90 L50 70 L20 90 L50 10 Z" fill="#3B82F6" stroke="white" strokeWidth="4" strokeLinejoin="round" />
+                   {/* Vision Cone */}
+                   <path d="M50 50 L10 10 A 60 60 0 0 1 90 10 Z" fill="url(#vision)" fillOpacity="0.3" transform="translate(0, -10)"/>
+                   <defs>
+                     <linearGradient id="vision" x1="50" y1="50" x2="50" y2="0" gradientUnits="userSpaceOnUse">
+                       <stop stopColor="#3B82F6" stopOpacity="0.6"/>
+                       <stop offset="1" stopColor="#3B82F6" stopOpacity="0"/>
+                     </linearGradient>
+                   </defs>
+                </svg>
             </div>
           </div> 
         </div>
+
+        {/* Turn Correction Popup */}
+        {showTurnPopup && isPaused && (
+            <div style={styles.popupOverlay}>
+                <div style={styles.popup}>
+                    <div style={styles.popupTitle}>Check Position 📍</div>
+                    <div style={styles.popupText}>
+                        Are you at the <strong>Corner</strong>?
+                        <br/>
+                        <span style={{fontSize: '12px', opacity: 0.8}}>Re-align pointer to this corner?</span>
+                    </div>
+                    <div style={styles.popupButtons}>
+                        <button style={{...styles.btnSecondary, minWidth: '80px', flex:1}} onClick={handleSkipTurn}>No (Skip)</button>
+                        <button style={{...styles.btnPrimary, minWidth: '80px', flex:1}} onClick={handleConfirmTurn}>Yes (Align)</button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* UI OVERLAY (Bottom Sheet) */}
         <div style={styles.bottomSheet}>

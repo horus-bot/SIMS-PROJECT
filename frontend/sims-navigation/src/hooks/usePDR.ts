@@ -13,7 +13,7 @@ let alpha = 0.8;
 let gravity = { x: 0, y: 0, z: 0 };
 
 // Added initialMapAngle: 0 = Up, 90 = Right, 180 = Down, 270 = Left
-export const usePDR = (initialX: number, initialY: number, isActive: boolean, initialMapAngle: number = 0, routePath: string[] = []) => {
+export const usePDR = (initialX: number, initialY: number, isActive: boolean, initialMapAngle: number = 0, routePath: string[] = [], isPaused: boolean = false) => {
   const [rawPos, setRawPos] = useState({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
   
@@ -38,8 +38,8 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
   };
 
   useEffect(() => {
-    if (!isActive) {
-      calibrationOffset.current = null;
+    if (!isActive || isPaused) {
+      if (!isActive) calibrationOffset.current = null;
       return;
     }
 
@@ -86,8 +86,37 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
         
         const dynamicStridePx = currentStride.current * PIXELS_PER_METER;
 
-        const newX = rawPosRef.current.x + Math.sin(rad) * dynamicStridePx;
-        const newY = rawPosRef.current.y - Math.cos(rad) * dynamicStridePx;
+        let stepX = Math.sin(rad) * dynamicStridePx;
+        let stepY = -Math.cos(rad) * dynamicStridePx;
+
+        // --- STEP WEIGHTING (Pull towards next node) ---
+        const nodes = testData.nodes as any;
+        let closestIdx = -1;
+        let minDist = Infinity;
+        routePath.forEach((nodeId, idx) => {
+           const n = nodes[nodeId];
+           if(n) {
+               const d = Math.hypot(n.x - rawPosRef.current.x, n.y - rawPosRef.current.y);
+               if(d < minDist) { minDist = d; closestIdx = idx; }
+           }
+        });
+
+        if (closestIdx !== -1 && closestIdx < routePath.length - 1) {
+             const nextNode = nodes[routePath[closestIdx + 1]];
+             const distToNext = Math.hypot(nextNode.x - rawPosRef.current.x, nextNode.y - rawPosRef.current.y);
+             if (distToNext > 0) {
+                 const pullX = (nextNode.x - rawPosRef.current.x) / distToNext;
+                 const pullY = (nextNode.y - rawPosRef.current.y) / distToNext;
+                 
+                 // Add 20% pull towards destination to step
+                 const WEIGHT = 0.20; 
+                 stepX = stepX * (1-WEIGHT) + (pullX * dynamicStridePx) * WEIGHT;
+                 stepY = stepY * (1-WEIGHT) + (pullY * dynamicStridePx) * WEIGHT;
+             }
+        }
+
+        const newX = rawPosRef.current.x + stepX;
+        const newY = rawPosRef.current.y + stepY;
 
         // KALMAN FILTER STEP
         if (dt > 0 && dt < 2.0) { // Safety check for reasonable dt
@@ -127,34 +156,41 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
 
       const relativeHeading = (rawCompass - (calibrationOffset.current || 0) + 90 + 360) % 360;
 
-      // Compute ideal heading towards nearest route node
+      // Compute ideal heading towards NEXT route node
       const nodes = testData.nodes as any;
-      let nearestNode: any = null;
+      let closestIdx = -1;
       let minDist = Infinity;
-      routePath.forEach(nodeId => {
+      routePath.forEach((nodeId, idx) => {
         const node = nodes[nodeId];
         if (node) {
           const dist = Math.hypot(node.x - rawPosRef.current.x, node.y - rawPosRef.current.y);
           if (dist < minDist) {
             minDist = dist;
-            nearestNode = node;
+            closestIdx = idx;
           }
         }
       });
 
       let targetHeading = relativeHeading; // default to magnetometer
-      if (nearestNode) {
-        const dx = nearestNode.x - rawPosRef.current.x;
-        const dy = nearestNode.y - rawPosRef.current.y;
+      
+      // If we have a reachable next node, align heading to the PATH segment
+      if (closestIdx !== -1 && closestIdx < routePath.length - 1) {
+        const nextNode = nodes[routePath[closestIdx + 1]];
+        const dx = nextNode.x - rawPosRef.current.x;
+        const dy = nextNode.y - rawPosRef.current.y;
+        
+        // Calculate angle to next node (0=Up, 90=Right)
+        // dx, -dy converts screen coords (y down) to cartesian (y up) for atan2
         const idealHeading = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
         
-        // Error value: ideal - magnetometer
         let error = idealHeading - relativeHeading;
         if (error > 180) error -= 360;
         if (error < -180) error += 360;
         
-        // Align: corrected = magnetometer + error = ideal
-        targetHeading = (relativeHeading + error + 360) % 360;
+        // MIXING: 60% Map Path, 40% Magnetometer
+        // This makes the user stick to the path direction visually
+        const HEADING_WEIGHT = 0.6;
+        targetHeading = (relativeHeading + error * HEADING_WEIGHT + 360) % 360;
       }
 
       // APPLY LOW-PASS FILTER FOR SMOOTHNESS
