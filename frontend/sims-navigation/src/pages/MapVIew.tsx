@@ -332,6 +332,7 @@ const styles: Record<string, CSSProperties> = {
 type NodeType = { x: number; y: number; type: string };
 
 // Function to compute distance from point to polyline
+/*
 const distanceToPolyline = (px: number, py: number, points: {x: number, y: number}[]) => {
   let minDist = Infinity;
   for (let i = 0; i < points.length - 1; i++) {
@@ -354,6 +355,7 @@ const distanceToLineSegment = (px: number, py: number, x1: number, y1: number, x
   const projY = y1 + t * dy;
   return Math.hypot(px - projX, py - projY);
 };
+*/
 
 // ✅ map coordinate system from your svg viewBox
 // const MAP_W = 4101;
@@ -488,7 +490,7 @@ const MapView = () => {
     });
 
     // Check deviation: if distance to route > 50px, deviated
-    const dist = distanceToPolyline(snappedPos.x, snappedPos.y, routePoints);
+    // const dist = distanceToPolyline(snappedPos.x, snappedPos.y, routePoints);
     // Deprecated: setIsDeviated(dist > 50);
   }, [snappedPos, isNavActive, routePoints]);
 

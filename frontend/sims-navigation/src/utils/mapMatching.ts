@@ -1,8 +1,8 @@
 import testData from "../data/test_1.json";
 
-const PIXELS_PER_METER = 49;
-const ALLOWED_DEVIATION_M = 0.6;
-const ALLOWED_DEVIATION_PX = ALLOWED_DEVIATION_M * PIXELS_PER_METER; // ~29.4px
+// const PIXELS_PER_METER = 49;
+// const ALLOWED_DEVIATION_M = 0.6;
+// const ALLOWED_DEVIATION_PX = ALLOWED_DEVIATION_M * PIXELS_PER_METER; // ~29.4px
 
 export const applyCRFConstraints = (x: number, y: number, routePath: string[] = []) => {
   const nodes = testData.nodes as any;

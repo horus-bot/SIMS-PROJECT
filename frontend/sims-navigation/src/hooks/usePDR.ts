@@ -4,7 +4,7 @@ import { Kalman2D } from "../utils/kalman2d";
 
 const PIXELS_PER_METER = 49; 
 const STRIDE_METERS = 0.6; // Reduced to limit speed to ~1m/s
-const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER; 
+// const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER;
 const SENSITIVITY = 0.9; 
 const STEP_COOLDOWN = 600; // Keep at 600ms for ~1 step/s max
 const HEADING_SMOOTHING = 0.05; // Reduced for more resistivity in direction changes 
