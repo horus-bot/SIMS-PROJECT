@@ -1,11 +1,19 @@
-import { useMemo, useState, useEffect, type CSSProperties } from "react";
+import {
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+  type CSSProperties,
+} from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import TestMap from "../components/map/testMap"; // ✅ USE YOUR EXISTING TESTMAP
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
-import { usePDR } from "../hooks/userPDR";
-import { useCRFNavigation } from "../hooks/useCRFNavigation";
-import MapCanvas from "../components/navigation/MapCanvas";
+import { usePDR } from "../hooks/usePDR";
+import { applyCRFConstraints } from "../utils/mapMatching";
 
+// --- Styles Object (Inline CSS) ---
+// Color Palette
 const colors = {
   primary: "#1E293B",
   primaryDark: "#0F172A",
@@ -17,6 +25,7 @@ const colors = {
   textSecondary: "#64748B",
   lightBlue: "#F0F9FF",
   lightGreen: "#ECFDF5",
+  lightPurple: "#FAF5FF",
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -28,6 +37,7 @@ const styles: Record<string, CSSProperties> = {
     background: colors.primary,
     fontFamily:
       '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    overflow: "hidden",
     position: "fixed",
     inset: 0,
   },
@@ -54,6 +64,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: "6px",
   },
+
   mapSection: {
     flex: 1,
     width: "100%",
@@ -65,6 +76,70 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
   },
+
+  // ✅ viewport frame
+  viewport: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: "16px",
+    cursor: "grab",
+    touchAction: "none",
+  },
+
+  // ✅ camera layer (we move this using translate + scale)
+  camera: {
+    position: "absolute",
+    inset: 0,
+    transformOrigin: "0 0",
+    transition: "transform 0.25s ease",
+    willChange: "transform",
+  },
+
+  floorPill: {
+    position: "absolute",
+    top: "20px",
+    right: "20px",
+    backgroundColor: colors.primary,
+    padding: "8px 16px",
+    borderRadius: "50px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+    fontWeight: 700,
+    color: colors.surface,
+    fontSize: "14px",
+    zIndex: 10,
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+
+  zoomControls: {
+    position: "absolute",
+    bottom: "280px",
+    right: "20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    zIndex: 50, // Increased z-index
+  },
+  zoomBtn: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "12px",
+    backgroundColor: colors.surface,
+    border: `1px solid ${colors.secondary}`,
+    color: colors.text,
+    fontSize: "20px",
+    fontWeight: "bold",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    userSelect: "none",
+  },
+
   bottomSheet: {
     position: "absolute",
     bottom: 0,
@@ -83,12 +158,14 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: "40vh",
     overflowY: "auto",
   },
+
   infoRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "12px",
   },
+
   distanceBadge: {
     background: colors.accent,
     color: colors.surface,
@@ -102,11 +179,52 @@ const styles: Record<string, CSSProperties> = {
     gap: "6px",
     whiteSpace: "nowrap",
   },
+
+  locationsGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto 1fr",
+    alignItems: "center",
+    gap: "12px",
+    backgroundColor: colors.lightGreen,
+    padding: "14px",
+    borderRadius: "16px",
+    border: `1px solid ${colors.secondary}`,
+  },
+  locationNode: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    minWidth: 0,
+  },
+  label: {
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    color: colors.secondary,
+    fontWeight: 600,
+  },
+  value: {
+    fontSize: "15px",
+    fontWeight: 600,
+    color: colors.text,
+    lineHeight: 1.3,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "140px",
+  },
+  arrowIcon: {
+    color: colors.primary,
+    fontSize: "18px",
+    fontWeight: 900,
+  },
+
   actionsRow: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: "12px",
   },
+
   btnSecondary: {
     padding: "14px",
     borderRadius: "14px",
@@ -130,11 +248,59 @@ const styles: Record<string, CSSProperties> = {
     textAlign: "center",
     boxShadow: `0 4px 12px rgba(0,0,0, 0.25)`,
   },
+
+  // Pointer movement pad
+  pad: {
+    display: "grid",
+    gridTemplateColumns: "52px 52px 52px",
+    gridTemplateRows: "52px 52px 52px",
+    gap: "10px",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "12px",
+    borderRadius: "16px",
+    background: colors.lightBlue,
+    border: `1px solid ${colors.accent}`,
+  },
+  padBtn: {
+    width: "52px",
+    height: "52px",
+    borderRadius: "14px",
+    border: `1px solid rgba(30,41,59,0.15)`,
+    background: colors.surface,
+    cursor: "pointer",
+    fontSize: "18px",
+    fontWeight: 900,
+    color: colors.primary,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    userSelect: "none",
+  },
+  padEmpty: { width: "52px", height: "52px" },
+
+  pointerDot: {
+    position: "absolute",
+    width: "18px",
+    height: "18px",
+    borderRadius: "50%",
+    background: "#F97316",
+    border: "3px solid white",
+    boxShadow: "0 6px 16px rgba(0,0,0,0.25)",
+    zIndex: 20,
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none",
+  },
 };
 
 type NodeType = { x: number; y: number; type: string };
 
-export default function MapView() {
+// ✅ map coordinate system from your svg viewBox
+// const MAP_W = 4101;
+// const MAP_H = 3025;
+
+const MapView = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [isNavActive, setIsNavActive] = useState(false);
@@ -148,248 +314,184 @@ export default function MapView() {
 
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
 
+  // Starting Coordinates
+  const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
+
+  // Dijkstra Route calculation (Still needed for the visual blue line)
   const routePath = useMemo(() => {
     if (!originId || !destId) return [];
     return findShortestPath(originId, destId, nodeMap);
   }, [originId, destId, nodeMap]);
 
-  const startNode = useMemo(
-    () => nodeMap[originId || ""] || { x: 785, y: 924 },
-    [originId, nodeMap]
-  );
+  // 1. PDR HOOK (Integrated with initialMapAngle = 0 for POC logic)
+  const { rawPos, heading, forceSetPos } = usePDR(startNode.x, startNode.y, isNavActive, 0);
 
-  // 1. PDR System (Raw Steps + Heading)
-  const { rawPos, heading, forceSetPos, resetHeading } = usePDR(
-    startNode.x,
-    startNode.y,
-    isNavActive,
-    routePath,
-    nodeMap
-  );
+  // 2. GLOBAL TUNNEL CONSTRAINTS (Updated: Removed routePath)
+  // This now checks against ALL edges in test_1.json automatically
+  const snappedPos = useMemo(() => {
+    return applyCRFConstraints(rawPos.x, rawPos.y);
+  }, [rawPos]); // Only re-run when you move, using the global map edges
 
-  // 2. CRF / Map-Matching (Locks PDR to Route)
-  const { correctedPos, nextNode, turnDetected, confirmTurn, segmentIndex } = useCRFNavigation({
-    isNavActive,
-    routePath,
-    nodeMap,
-    rawPos,
-    forceSetPos,
-  });
-
-  const [zoom, setZoom] = useState(0.6);
-  const [isFollowing, setIsFollowing] = useState(true);
-
-  // Calculate distance & angle to next node (based on corrected pos)
-  const navInfo = useMemo(() => {
-    if (!nextNode) return null;
-    
-    // Distance from our constrained position to next node
-    const distPx = Math.hypot(nextNode.x - correctedPos.x, nextNode.y - correctedPos.y);
-    const angle = (Math.atan2(nextNode.y - correctedPos.y, nextNode.x - correctedPos.x) * 180) / Math.PI;
-    
-    return {
-        distM: (distPx / 49).toFixed(1),
-        target: nextNode.type || "Node",
-        angle: angle + 90
-    };
-  }, [correctedPos, nextNode]);
-
-  // Auto-confirm logic
-  const [autoConfirmCount, setAutoConfirmCount] = useState(5);
-  useEffect(() => {
-    if (turnDetected.detected) {
-      setAutoConfirmCount(5);
-      const timer = setInterval(() => {
-        setAutoConfirmCount((prev) => {
-          if (prev <= 1) {
-            confirmTurn();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [turnDetected.detected, confirmTurn]);
-
-  // Instructions Generation
-  const instructions = useMemo(() => {
-    if (!routePath || routePath.length < 2) return [];
-    const steps = [];
-    for (let i = 0; i < routePath.length - 1; i++) {
-        const currId = routePath[i];
-        const nextId = routePath[i+1];
-        const curr = nodeMap[currId];
-        const next = nodeMap[nextId];
-        if (!curr || !next) continue;
-        
-        const dist = Math.hypot(next.x - curr.x, next.y - curr.y) / 49; 
-        
-        // Simple direction logic based on previous vector vs current vector could be added here
-        // For now, we list the segments.
-        
-        steps.push({
-            step: i + 1,
-            text: `Go to ${nextId}`,
-            dist: dist.toFixed(1),
-            isNext: i === segmentIndex  // Accurate tracking
-        });
-    }
-    return steps;
-  }, [routePath, nodeMap, segmentIndex]);
-
+  // Manual Permission Trigger
   const startNavigation = async () => {
-    try {
-      if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+    if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+      try {
         const res = await (DeviceMotionEvent as any).requestPermission();
-        if (res !== "granted") return;
+        if (res === 'granted') setIsNavActive(true);
+      } catch (e) {
+        console.error("Sensor permission denied", e);
       }
-      
-      resetHeading();
+    } else {
       setIsNavActive(true);
-      setIsFollowing(true);
-    } catch (err) {
-      console.log("Permission error:", err);
     }
   };
 
-  useEffect(() => {
-    // Optional: add vibration if near target
-  }, []);
+  // ✅ Step-by-Step "Play" Feature
+  const handlePlayNextNode = () => {
+    let closestIdx = 0;
+    let minD = Infinity;
+    
+    routePath.forEach((id, idx) => {
+      const n = nodeMap[id];
+      const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
+      if (d < minD) { minD = d; closestIdx = idx; }
+    });
 
-  if (!originId || !destId) return <div>Invalid Route</div>;
+    const nextNodeId = routePath[closestIdx + 1];
+    if (nextNodeId) {
+      const nextNode = nodeMap[nextNodeId];
+      forceSetPos(nextNode.x, nextNode.y);
+    }
+  };
+
+  // Camera follow logic
+  const [zoom] = useState(0.6);
+  const [camera, setCamera] = useState({ x: 0, y: 0 });
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    
+    setCamera({ 
+      x: vp.clientWidth / 2 - snappedPos.x * zoom, 
+      y: vp.clientHeight / 2 - snappedPos.y * zoom 
+    });
+  }, [snappedPos, zoom]);
+
+  if (!originId || !destId) return <div style={{color: 'white', padding: '20px'}}>Invalid Route</div>;
 
   return (
+    // ... (rest of your JSX)
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.headerTitle}>
-          {isNavActive ? "PDR Main Active" : "Ready"}
-        </h1>
-
+        <h1 style={styles.headerTitle}>{isNavActive ? "Navigation Active" : "Ready to Start"}</h1>
         <div style={styles.headerSubtitle}>
-          <span style={{ color: isNavActive ? "#22C55E" : "#F59E0B" }}>●</span>
-          {isNavActive
-            ? "Walk to navigate"
-            : "Press Start to enable sensors"}
+          <span style={{ color: isNavActive ? "#22C55E" : "#64748B" }}>●</span> 
+          {isNavActive ? "Live Sensors Tracking" : "Waiting for activation"}
         </div>
       </header>
 
       <div style={styles.mapSection}>
-        <MapCanvas
-          routePath={routePath}
-          nodeLockedPos={correctedPos}
-          isNavActive={isNavActive}
-          zoom={zoom}
-          setZoom={setZoom}
-          isFollowing={isFollowing}
-          setIsFollowing={setIsFollowing}
-          rotation={heading} // ✅ Show User Heading
-        />
-      </div>
-
-       {/* Turn Confirmation - Bottom Sheet Style */}
-       {turnDetected.detected && (
+        <div ref={viewportRef} style={styles.viewport}>
+          {/* CAMERA LAYER */}
           <div style={{
-              position: "absolute",
-              bottom: "180px", // Just above bottom sheet
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#1E293B", 
-              padding: "16px 24px",
-              borderRadius: "50px",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-              zIndex: 100,
-              display: "flex",
-              alignItems: "center",
-              gap: "14px",
-              minWidth: "280px",
-              justifyContent: "space-between",
-              border: "2px solid #3B82F6",
-              animation: "slideUp 0.3s ease-out"
+            ...styles.camera,
+            transform: `translate(${camera.x}px, ${camera.y}px) scale(${zoom})`,
           }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "white" }}>
-                  <span style={{ fontSize: "20px" }}>📍</span>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                     <span style={{ fontSize: "14px", fontWeight: 700 }}>Arrived at Node?</span>
-                     <span style={{ fontSize: "11px", color: "#94A3B8" }}>Auto-yes in {autoConfirmCount}s</span>
-                  </div>
+            <TestMap routePath={routePath} />
+
+            {/* LIVE POINTER WITH DIRECTION OF SIGHT (Rotates based on calibrated heading) */}
+            <div style={{
+              position: "absolute",
+              left: snappedPos.x,
+              top: snappedPos.y,
+              transform: `translate(-50%, -50%) rotate(${heading}deg)`,
+              transition: 'all 0.2s linear',
+              zIndex: 25,
+              pointerEvents: "none",
+            }}>
+              {/* 1. The Vision Beam (Triangle) */}
+              <div style={{
+                position: "absolute",
+                bottom: "50%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: "120px",
+                height: "160px",
+                background: "linear-gradient(to top, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 100%)",
+                clipPath: "polygon(50% 100%, 0% 0%, 100% 0%)",
+                zIndex: 24,
+              }} />
+
+              {/* 2. The Main User Dot */}
+              <div style={{
+                ...styles.pointerDot,
+                position: "relative",
+                left: 0,
+                top: 0,
+                transform: "translate(-50%, -50%)",
+                background: '#3B82F6',
+                border: "3px solid white",
+                boxShadow: "0 0 15px rgba(59, 130, 246, 0.5)",
+                zIndex: 26,
+              }}>
+                {/* 3. Tiny Directional Arrow inside dot */}
+                <div style={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: "5px solid transparent",
+                  borderRight: "5px solid transparent",
+                  borderBottom: "8px solid white",
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -80%)", 
+                }} />
               </div>
-              <button
-                  style={{
-                      background: "#3B82F6",
-                      color: "white",
-                      border: "none",
-                      padding: "8px 16px",
-                      borderRadius: "20px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontSize: "13px"
-                  }}
-                  onClick={() => confirmTurn()}
-              >
-                  YES
-              </button>
-          </div>
-      )}
-
-      <div style={styles.bottomSheet}>
-        {navInfo && (
-            <div style={styles.infoRow}>
-                <div>Next: <b>{navInfo.target}</b></div>
-                <div style={styles.distanceBadge}>{navInfo.distM} m</div>
             </div>
-        )}
-
-        {/* Step-by-Step Instructions */}
-        <div style={{
-            marginTop: "12px",
-            maxHeight: "150px",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            paddingRight: "4px"
-        }}>
-            {instructions.map((inst, idx) => (
-                <div key={idx} style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "8px 12px",
-                    background: inst.isNext ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.05)",
-                    borderLeft: inst.isNext ? "3px solid #3B82F6" : "3px solid transparent",
-                    borderRadius: "4px",
-                    color: inst.isNext ? "#fff" : "#94A3B8"
-                }}>
-                    <span style={{ fontSize: "13px" }}>{idx + 1}. {inst.text}</span>
-                    <span style={{ fontSize: "12px", opacity: 0.7 }}>{inst.dist}m</span>
-                </div>
-            ))}
+          </div> 
         </div>
 
-        <div style={styles.actionsRow}>
-          <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>
-            ← Back
-          </button>
-          {!isNavActive && (
-              <button
-                style={styles.btnPrimary}
-                onClick={startNavigation}
-              >
-                🚀 Start Walking
+        {/* UI OVERLAY (Bottom Sheet) */}
+        <div style={styles.bottomSheet}>
+          <div style={styles.infoRow}>
+            {!isNavActive ? (
+              <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>
+                🚀 START LIVE TRACKING
               </button>
-          )}
-           <button
-              style={{...styles.btnPrimary, background: "#6366f1"}}
-              onClick={() => {
-                forceSetPos(startNode.x, startNode.y);
-                setIsFollowing(true);
-              }}
-            >
-              Reset
-            </button>
+            ) : (
+              <div style={styles.distanceBadge}>📍 {originId} → {destId}</div>
+            )}
+          </div>
+
+          <div style={styles.pad}>
+            <div style={styles.padEmpty} />
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y - 50)}>⬆</button>
+            <div style={styles.padEmpty} />
+
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x - 50, rawPos.y)}>⬅</button>
+            
+            <button 
+              style={{...styles.padBtn, background: colors.primary, color: "white"}} 
+              onClick={handlePlayNextNode}
+            >▶</button>
+            
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x + 50, rawPos.y)}>➡</button>
+
+            <div style={styles.padEmpty} />
+            <button style={styles.padBtn} onClick={() => forceSetPos(rawPos.x, rawPos.y + 50)}>⬇</button>
+            <div style={styles.padEmpty} />
+          </div>
+
+          <div style={styles.actionsRow}>
+            <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
+            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Reset Pos</button>
+          </div>
         </div>
       </div>
     </div>
   );
-}
+};
 
+export default MapView;

@@ -1,50 +1,53 @@
-type XY = { x: number; y: number };
-type NodeMap = Record<string, XY>;
+import testData from "../data/test_1.json";
 
-const MAX_SNAP_DISTANCE = 35; // reduce to 25 if still crossing
+const PIXELS_PER_METER = 49;
+const ALLOWED_DEVIATION_M = 0.6;
+const ALLOWED_DEVIATION_PX = ALLOWED_DEVIATION_M * PIXELS_PER_METER; // ~29.4px
 
-// Snap a point to the closest segment of the ROUTE ONLY
-export function snapToRoute(
-  x: number,
-  y: number,
-  routePath: string[],
-  nodes: NodeMap,
-  prev?: XY
-): XY {
-  if (!routePath || routePath.length < 2) return { x, y };
+export const applyCRFConstraints = (x: number, y: number) => {
+  const nodes = testData.nodes as any;
+  const edges = testData.edges;
 
-  let best = { x, y };
-  let bestDist = Infinity;
+  let minDistance = Infinity;
+  let closestPointInBuilding = { x, y };
 
-  for (let i = 0; i < routePath.length - 1; i++) {
-    const a = nodes[routePath[i]];
-    const b = nodes[routePath[i + 1]];
-    if (!a || !b) continue;
+  // 1. Scan EVERY edge in the building to find the nearest "tunnel"
+  edges.forEach((edge) => {
+    const p1 = nodes[edge.from];
+    const p2 = nodes[edge.to];
+    if (!p1 || !p2) return;
 
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
     const l2 = dx * dx + dy * dy;
-    if (l2 === 0) continue;
+    if (l2 === 0) return;
 
-    // project point on segment
-    let t = ((x - a.x) * dx + (y - a.y) * dy) / l2;
+    let t = ((x - p1.x) * dx + (y - p1.y) * dy) / l2;
     t = Math.max(0, Math.min(1, t));
 
-    const px = a.x + t * dx;
-    const py = a.y + t * dy;
+    const projX = p1.x + t * dx;
+    const projY = p1.y + t * dy;
+    const dist = Math.hypot(x - projX, y - projY);
 
-    const dist = Math.hypot(x - px, y - py);
-
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = { x: px, y: py };
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestPointInBuilding = { x: projX, y: projY };
     }
+  });
+
+  // 2. "Tunnel" Logic:
+  // If we are within 0.6m of ANY legal hallway, let the user move freely.
+  if (minDistance <= ALLOWED_DEVIATION_PX) {
+    return { x, y }; 
   }
 
-  // Reject movement if far away from route corridor
-  if (bestDist > MAX_SNAP_DISTANCE) {
-    return prev ?? { x, y };
-  }
-
-  return best;
-}
+  // 3. Wall Logic:
+  // If they try to walk through a wall (exit the tunnel), 
+  // push them back to the edge of the nearest legal hallway.
+  const angle = Math.atan2(y - closestPointInBuilding.y, x - closestPointInBuilding.x);
+  
+  return {
+    x: closestPointInBuilding.x + Math.cos(angle) * ALLOWED_DEVIATION_PX,
+    y: closestPointInBuilding.y + Math.sin(angle) * ALLOWED_DEVIATION_PX
+  };
+};
