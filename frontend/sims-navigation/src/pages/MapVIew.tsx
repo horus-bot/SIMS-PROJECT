@@ -6,25 +6,29 @@ import {
   type CSSProperties,
 } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import gsap from "gsap";
 import TestMap from "../components/map/testMap"; 
 import testData from "../data/test_1.json";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/usePDR";
 import { applyCRFConstraints } from "../utils/mapMatching";
 
+const MAP_W = 4101;
+const MAP_H = 3025;
+
 // --- Styles Object (Inline CSS) ---
-// Color Palette
+// Color Palette (Light "Premium" Mode)
 const colors = {
   primary: "#1E293B",
   primaryDark: "#0F172A",
   secondary: "#10B981",
   accent: "#3B82F6",
-  background: "#F8FAFC",
-  surface: "#FFFFFF",
-  text: "#1E293B",
+  background: "#F8FAFC",  // Light premium background
+  surface: "#FFFFFF",     // Clean white surface
+  text: "#0F172A",        // Dark rich text
   textSecondary: "#64748B",
-  lightBlue: "#F0F9FF",
-  lightGreen: "#ECFDF5",
+  lightBlue: "#E0F2FE",   // Soft blue for UI
+  lightGreen: "#ECFDF5",  
   lightPurple: "#FAF5FF",
 };
 
@@ -34,7 +38,8 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     height: "100vh",
     width: "100%",
-    background: colors.primary,
+    background: colors.background,
+    color: colors.text,
     fontFamily:
       '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     overflow: "auto",
@@ -42,12 +47,13 @@ const styles: Record<string, CSSProperties> = {
     inset: "initial",
   },
   header: {
-    background: colors.surface,
+    background: "rgba(255, 255, 255, 0.85)", // Light Frosted Glass
+    backdropFilter: "blur(12px)",
     padding: "16px 20px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
     zIndex: 30,
     flexShrink: 0,
-    borderBottom: `1px solid ${colors.primary}`,
+    borderBottom: `1px solid rgba(0,0,0,0.05)`,
   },
   headerTitle: {
     fontSize: "18px",
@@ -64,13 +70,13 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: "6px",
   },
-
+  
   mapSection: {
     flex: 1,
     width: "100%",
     height: "100%",
     position: "relative",
-    backgroundColor: colors.background,
+    backgroundColor: "#F1F5F9", // Soft light gray void
     overflow: "hidden",
     display: "flex",
     alignItems: "center",
@@ -83,9 +89,17 @@ const styles: Record<string, CSSProperties> = {
     height: "100%",
     position: "relative",
     overflow: "hidden",
-    borderRadius: "16px",
-    cursor: "grab",
-    touchAction: "none",
+    // Premium Light Gradient
+    background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f1f5f9 60%, #e2e8f0 100%)",
+    perspective: "1200px",
+  },
+
+  // ✅ 3D container for tilt
+  map3DWrapper: {
+    width: "100%",
+    height: "100%",
+    transformStyle: "preserve-3d",
+    willChange: "transform",
   },
 
   // ✅ camera layer (we move this using translate + scale)
@@ -93,8 +107,29 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     inset: 0,
     transformOrigin: "0 0",
-    transition: "transform 0.25s ease",
+    // transition handled inline in component
     willChange: "transform",
+    // Filter removed for performance
+  },
+
+  recenterBtn: {
+    position: "absolute",
+    bottom: "220px",
+    right: "20px",
+    width: "50px",
+    height: "50px",
+    borderRadius: "16px",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backdropFilter: "blur(8px)",
+    border: `1px solid ${colors.secondary}`,
+    color: colors.primary,
+    fontSize: "24px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    zIndex: 50,
   },
 
   floorPill: {
@@ -339,6 +374,20 @@ const styles: Record<string, CSSProperties> = {
     transform: "translate(-50%, -50%)",
     pointerEvents: "none",
   },
+  
+  controlLabel: {
+    backgroundColor: "rgba(255, 255, 255, 0.9)", // Light semi-transparent bg
+    color: "#1E293B", // Dark text
+    padding: "4px 8px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 600,
+    backdropFilter: "blur(4px)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+    border: "1px solid rgba(0,0,0,0.05)",
+  },
 };
 
 type NodeType = { x: number; y: number; type: string };
@@ -369,9 +418,36 @@ const distanceToLineSegment = (px: number, py: number, x1: number, y1: number, x
 };
 */
 
-// ✅ map coordinate system from your svg viewBox
-// const MAP_W = 4101;
-// const MAP_H = 3025;
+// Hover Button Helper
+const ControlButton = ({ label, children, onClick, style }: { label: string, children: React.ReactNode, onClick: () => void, style?: React.CSSProperties }) => {
+    const [hover, setHover] = useState(false);
+    return (
+        <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+        >
+            <span style={{
+                ...styles.controlLabel,
+                opacity: hover ? 1 : 0,
+                transform: hover ? 'translateX(0px)' : 'translateX(10px)',
+                transition: 'all 0.2s ease-out',
+                visibility: hover ? 'visible' : 'hidden'
+            }}>{label}</span>
+            
+            <button 
+                onClick={onClick}
+                style={{
+                    ...style,
+                    transform: hover ? 'scale(1.1)' : 'scale(1)',
+                    transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                }}
+            >
+                {children}
+            </button>
+        </div>
+    );
+};
 
 const MapView = () => {
   const [searchParams] = useSearchParams();
@@ -387,10 +463,19 @@ const MapView = () => {
 
   const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
 
+  // Destination Markers
+  const destinationMarkers = useMemo(() => {
+    return Object.entries(destinations).map(([name, id]) => {
+      const node = nodeMap[id];
+      if (!node) return null;
+      return { name, x: node.x, y: node.y, id };
+    }).filter((item): item is {name: string, x: number, y: number, id: string} => item !== null);
+  }, [destinations, nodeMap]);
+
   // Starting Coordinates
   const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
 
-  // Dijkstra Route calculation (Still needed for the visual blue line)
+  // Dijkstra Route calculation
   const routePath = useMemo(() => {
     if (!originId || !destId) return [];
     return findShortestPath(originId, destId, nodeMap);
@@ -411,7 +496,7 @@ const MapView = () => {
   const [actualPath, setActualPath] = useState<{x: number, y: number}[]>([]);
   const [isDeviated, setIsDeviated] = useState(false);
 
-  // 1. PDR HOOK (Integrated with initialMapAngle = 0 for POC logic)
+  // 1. PDR HOOK
   const [isPaused, setIsPaused] = useState(false);
   const { rawPos, heading, forceSetPos, currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
 
@@ -433,16 +518,12 @@ const MapView = () => {
         const angle2 = Math.atan2(next.y - curr.y, next.x - curr.x);
         let diff = Math.abs(angle1 - angle2);
         if (diff > Math.PI) diff = 2 * Math.PI - diff;
-
-        if (diff > 0.6) { // > ~35 degrees
-            turns.push(routePath[i]);
-        }
+        if (diff > 0.6) turns.push(routePath[i]);
     }
     return turns;
   }, [routePath, nodeMap]);
 
-  // 2. GLOBAL TUNNEL CONSTRAINTS (Updated: Removed routePath)
-  // This now checks against ALL edges in test_1.json automatically
+  // 2. GLOBAL TUNNEL CONSTRAINTS
   const snapResult = useMemo(() => {
     return applyCRFConstraints(rawPos.x, rawPos.y, routePath);
   }, [rawPos, routePath]);
@@ -452,12 +533,8 @@ const MapView = () => {
   // --- NAVIGATION STATE CALCULATION ---
   const navState = useMemo(() => {
     if (!routePath.length) return { turnType: 'straight', distToTurn: 0, totalRem: 0 };
-
-    // 1. Find the next turn node index
     let turnType = 'straight';
     let distToTurn = 0;
-
-    // Find closest node index on route
     let currentIdx = 0;
     let minD = Infinity;
     routePath.forEach((id, idx) => {
@@ -465,51 +542,28 @@ const MapView = () => {
        const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
        if (d < minD) { minD = d; currentIdx = idx; }
     });
-
-    // Check upcoming nodes for turns
     for (let i = currentIdx; i < routePath.length - 1; i++) {
        const curr = nodeMap[routePath[i]];
        const next = nodeMap[routePath[i+1]];
        const after = routePath[i+2] ? nodeMap[routePath[i+2]] : null;
-       
        distToTurn += Math.hypot(curr.x - next.x, curr.y - next.y);
-
        if (after) {
-          // Check angle
           const angle1 = Math.atan2(next.y - curr.y, next.x - curr.x);
           const angle2 = Math.atan2(after.y - next.y, after.x - next.x);
           let diff = angle2 - angle1;
-          
-          // Normalize to [-PI, PI]
           while (diff <= -Math.PI) diff += 2*Math.PI;
           while (diff > Math.PI) diff -= 2*Math.PI;
-
-          if (Math.abs(diff) > 0.5) { // significant turn
-             turnType = diff > 0 ? 'right' : 'left';
-             break;
-          }
+          if (Math.abs(diff) > 0.5) { turnType = diff > 0 ? 'right' : 'left'; break; }
        }
     }
-
     if (currentIdx >= routePath.length - 1) turnType = 'finish';
-
-    // Calculate total remaining distance
     let totalRem = 0;
     for(let i=currentIdx; i<routePath.length-1; i++){
         const n1 = nodeMap[routePath[i]];
         const n2 = nodeMap[routePath[i+1]];
         totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
     }
-    
-    // Adjust distToTurn to be from current position, not current node
-    // Simple approximation: subtract distance from current pos to current node? 
-    // Better: project pos onto segment. For now, this is "good enough" for UI POC.
-    // const distFromNode = Math.hypot(snappedPos.x - nodeMap[routePath[currentIdx]].x, snappedPos.y - nodeMap[routePath[currentIdx]].y);
-    // If we passed the node, we might need to subtract? Let's keep it simple.
-    
-    // Convert pixels to meters (approx 1px = 2cm, so 50px = 1m)
     const PIXELS_PER_METER = 50; 
-
     return {
        turnType,
        distToTurn: Math.max(0, distToTurn / PIXELS_PER_METER),
@@ -517,22 +571,89 @@ const MapView = () => {
     };
   }, [snappedPos, routePath, nodeMap]);
 
-  // Calculate deviation - Now strictly based on whether mapMatching snapped to route or not
+  // --- TTS INSTRUCTION ---
+  const [isMuted, setIsMuted] = useState(false);
+  const lastSpokenInstruction = useRef<string | null>(null);
+
   useEffect(() => {
-     if (isNavActive) {
-         setIsDeviated(!snapResult.isOnRoute);
-     }
-  }, [snapResult, isNavActive]);
+    const synth = window.speechSynthesis;
+    if (isMuted) {
+        if (synth) synth.cancel();
+        return;
+    }
+
+    if (!isNavActive) return;
+
+    const { turnType, distToTurn } = navState;
+    
+    // Reset memory when far from next action to allow repeating for next similar turn
+    if (distToTurn > 30) {
+        lastSpokenInstruction.current = null;
+        return;
+    }
+
+    if (!synth) return;
+
+    const speak = (text: string) => {
+        if (lastSpokenInstruction.current === text) return;
+        
+        synth.cancel(); 
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0; 
+        synth.speak(utterance);
+        lastSpokenInstruction.current = text;
+    };
+
+    // 1. Arrival Logic
+    if (turnType === 'finish') {
+        if (distToTurn < 8) speak("You have arrived");
+        else if (distToTurn < 20 && distToTurn > 10) speak("Destination is ahead in 15 meters");
+        return;
+    }
+
+    // 2. Turn Logic - Dynamic Updates
+    // We quantize the distance to avoid "Turn left in 18.23 meters" 
+    // but give updates every ~5 meters when close, and ~10 meters when further away.
+    
+    // Only announce turns when within 40 meters
+    if (distToTurn <= 40) {
+        let quantizedDist = 0;
+        
+        if (distToTurn > 20) {
+            // Above 20m, round to nearest 10m (e.g., 30m, 40m)
+            quantizedDist = Math.round(distToTurn / 10) * 10;
+        } else {
+            // Below 20m, round to nearest 5m (e.g., 20m, 15m, 10m, 5m)
+            quantizedDist = Math.round(distToTurn / 5) * 5;
+        }
+
+        // Avoid announcing "0 meters" if we are practically there (handled by <6m logic previously, but let's be safe)
+        if (quantizedDist === 0) quantizedDist = 5; 
+
+        const instructions = [
+            `In ${quantizedDist} meters, turn ${turnType}`,
+            `Turn ${turnType} in ${quantizedDist} meters`,
+            `Upcoming ${turnType} turn in ${quantizedDist} meters`
+        ];
+        
+        // Simple rotation or random selection for "dynamic" feel
+        // We use the quantizedDist as a seed to pick a consistent phrase for that specific distance
+        // so it doesn't flip-flop randomly between recalcs.
+        const phraseIndex = quantizedDist % instructions.length;
+        speak(instructions[phraseIndex]);
+    }
+
+  }, [navState, isNavActive, isMuted]);
+
+  useEffect(() => { if (isNavActive) setIsDeviated(!snapResult.isOnRoute); }, [snapResult, isNavActive]);
 
   useEffect(() => {
     if (!isNavActive || isPaused) return;
-
     for (const nodeId of turnNodes) {
         if (checkedTurns.current.has(nodeId)) continue;
         const node = nodeMap[nodeId];
         const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
-        
-        if (dist < 80 && isDeviated) { // Only ask when deviated
+        if (dist < 80 && isDeviated) {
             setIsPaused(true);
             setPendingTurnNode({ id: nodeId, ...node });
             setShowTurnPopup(true);
@@ -543,142 +664,421 @@ const MapView = () => {
   }, [snappedPos, isNavActive, isPaused, turnNodes, nodeMap, isDeviated]);
 
   const handleConfirmTurn = () => {
-    if (pendingTurnNode) {
-        forceSetPos(pendingTurnNode.x, pendingTurnNode.y);
-    }
+    if (pendingTurnNode) forceSetPos(pendingTurnNode.x, pendingTurnNode.y);
     setShowTurnPopup(false);
     setIsPaused(false);
     setPendingTurnNode(null);
   };
 
-  const handleSkipTurn = () => {
-    setShowTurnPopup(false);
-    setIsPaused(false);
-    setPendingTurnNode(null);
-  };
+  const handleSkipTurn = () => { setShowTurnPopup(false); setIsPaused(false); setPendingTurnNode(null); };
 
-  // Track actual path and detect deviation
   useEffect(() => {
     if (!isNavActive || routePoints.length < 2) return;
-
     setActualPath(prev => {
       const last = prev[prev.length - 1];
-      if (!last || Math.hypot(snappedPos.x - last.x, snappedPos.y - last.y) > 10) { // Add if moved >10px
-        return [...prev, snappedPos];
-      }
+      if (!last || Math.hypot(snappedPos.x - last.x, snappedPos.y - last.y) > 10) return [...prev, snappedPos];
       return prev;
     });
-
-    // Check deviation: if distance to route > 50px, deviated
-    // const dist = distanceToPolyline(snappedPos.x, snappedPos.y, routePoints);
-    // Deprecated: setIsDeviated(dist > 50);
   }, [snappedPos, isNavActive, routePoints]);
 
   const handleReroute = () => {
-    // 1. Find the closest node to current (deviated) pos
-    let minD = Infinity;
-    let closestId = "";
+    let minD = Infinity; let closestId = "";
     Object.entries(nodeMap).forEach(([id, node]) => {
         const d = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
         if (d < minD) { minD = d; closestId = id; }
     });
-
-    if (closestId) {
-        // 2. Update origin to this new node (navigates to same page with new params)
-        navigate(`/map?origin=${closestId}&dest=${destId}`);
-    }
+    if (closestId) navigate(`/map?origin=${closestId}&dest=${destId}`);
   };
   
-  // Manual Permission Trigger
   const startNavigation = async () => {
     if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
       try {
         const res = await (DeviceMotionEvent as any).requestPermission();
         if (res === 'granted') setIsNavActive(true);
-      } catch (e) {
-        console.error("Sensor permission denied", e);
-      }
-    } else {
-      setIsNavActive(true);
-    }
-    // Reset path on start
-    setActualPath([]);
-    setIsDeviated(false);
+      } catch (e) { console.error("Sensor permission denied", e); }
+    } else { setIsNavActive(true); }
+    setActualPath([]); setIsDeviated(false);
   };
 
-  // Camera follow logic
-  const [zoom] = useState(0.6);
-  const [camera, setCamera] = useState({ x: 0, y: 0 });
-  const viewportRef = useRef<HTMLDivElement | null>(null);
+  // ============================================
+  //   GSAP OPTIMIZED INTERACTIVE MAP LOGIC
+  // ============================================
 
+  // Refs for State (Mutable, No Re-renders)
+  const camState = useRef({ x: 0, y: 0, zoom: 0.8, bearing: 0, pitch: 45 });
+
+  // DOM Refs
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const map3DRef = useRef<HTMLDivElement>(null);
+  const cameraLayerRef = useRef<HTMLDivElement>(null);
+  const compassRef = useRef<HTMLDivElement>(null);
+
+  // Logic Refs
+  const [autoFollow, setAutoFollow] = useState(true);
+  
+  // Gesture Refs
+  const lastPointer = useRef<{x: number, y: number} | null>(null);
+  const pointers = useRef<Map<number, {x: number, y: number}>>(new Map());
+  const initialGestureState = useRef<{dist: number, angle: number, bearing: number} | null>(null);
+
+  // Initialize GSAP Setters for performance
   useEffect(() => {
+      if(map3DRef.current) gsap.set(map3DRef.current, { rotateX: 45, rotateZ: 0 });
+      if(cameraLayerRef.current) gsap.set(cameraLayerRef.current, { x: 0, y: 0, scale: 0.8 });
+  }, []);
+
+  // Sync AutoFollow with GSAP
+  useEffect(() => {
+    if (!autoFollow || !viewportRef.current) return;
+    
+    const vp = viewportRef.current;
+    const cx = vp.clientWidth / 2;
+    const cy = vp.clientHeight / 2;
+    const { zoom } = camState.current;
+
+    const targetX = cx - snappedPos.x * zoom;
+    const targetY = cy - snappedPos.y * zoom;
+
+    const clamped = clampCamera(targetX, targetY, zoom);
+
+    gsap.to(cameraLayerRef.current, {
+        x: clamped.x,
+        y: clamped.y,
+        duration: 0.5,
+        ease: "power2.out",
+        onUpdate: () => {
+             // Keep internal ref sync if needed, but for auto-follow we trust the tween target
+        },
+        onComplete: () => {
+            camState.current.x = clamped.x;
+            camState.current.y = clamped.y;
+        }
+    });
+
+  }, [snappedPos, autoFollow]);
+
+
+  // Clamp Helper
+  const clampCamera = (nextX: number, nextY: number, nextZoom: number) => {
+    const vp = viewportRef.current;
+    if (!vp) return { x: nextX, y: nextY, z: nextZoom };
+    
+    const vpW = vp.clientWidth;
+    const vpH = vp.clientHeight;
+    
+    const minZoomW = vpW / MAP_W;
+    const minZoomH = vpH / MAP_H;
+    const minZoom = Math.max(minZoomW, minZoomH); // Ensure longest side covers
+    const safeZoom = Math.max(nextZoom, minZoom);
+    
+    const minX = vpW - (MAP_W * safeZoom);
+    const maxX = 0;
+    const minY = vpH - (MAP_H * safeZoom);
+    const maxY = 0;
+    
+    let resultX = nextX;
+    if (minX > maxX) resultX = (vpW - MAP_W * safeZoom) / 2;
+    else resultX = Math.min(maxX, Math.max(minX, nextX));
+    
+    let resultY = nextY;
+    if (minY > maxY) resultY = (vpH - MAP_H * safeZoom) / 2;
+    else resultY = Math.min(maxY, Math.max(minY, nextY));
+    
+    return { x: resultX, y: resultY, z: safeZoom };
+  };
+
+  // --- INTERACTION HANDLERS ---
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    (e.target as Element).setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    
+    setAutoFollow(false);
+    gsap.killTweensOf(cameraLayerRef.current); // Stop auto-follow animation
+    
+    camState.current.x = gsap.getProperty(cameraLayerRef.current, "x") as number;
+    camState.current.y = gsap.getProperty(cameraLayerRef.current, "y") as number;
+
+    if (pointers.current.size === 1) {
+        lastPointer.current = { x: e.clientX, y: e.clientY };
+    } else if (pointers.current.size === 2) {
+        const pts = Array.from(pointers.current.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        initialGestureState.current = { dist, angle, bearing: camState.current.bearing };
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    const pts = Array.from(pointers.current.values());
+
+    // 1. PAN (1 Finger)
+    if (pointers.current.size === 1 && lastPointer.current) {
+        const dx = e.clientX - lastPointer.current.x;
+        const dy = e.clientY - lastPointer.current.y;
+        
+        const rad = (camState.current.bearing * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const rDx = dx * cos + dy * sin;
+        const rDy = dy * cos - dx * sin;
+
+        const nextX = camState.current.x + rDx;
+        const nextY = camState.current.y + rDy;
+        const clamped = clampCamera(nextX, nextY, camState.current.zoom);
+        
+        gsap.set(cameraLayerRef.current, { x: clamped.x, y: clamped.y });
+        
+        camState.current.x = clamped.x;
+        camState.current.y = clamped.y;
+        
+        lastPointer.current = { x: e.clientX, y: e.clientY };
+    }
+    // 2. ROTATE (2 Fingers)
+    else if (pointers.current.size === 2 && initialGestureState.current) {
+        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        const rotationDelta = (angle - initialGestureState.current.angle) * (180 / Math.PI);
+        const newBearing = initialGestureState.current.bearing + rotationDelta;
+
+        gsap.set(map3DRef.current, { rotateZ: newBearing });
+        gsap.set(compassRef.current, { rotation: newBearing });
+        camState.current.bearing = newBearing;
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    (e.target as Element).releasePointerCapture(e.pointerId);
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) initialGestureState.current = null;
+    if (pointers.current.size === 1) {
+        const p = Array.from(pointers.current.values())[0];
+        lastPointer.current = { x: p.x, y: p.y };
+    }
+  };
+
+  // --- BUTTON ACTIONS ---
+
+  const handleRecenter = () => {
     const vp = viewportRef.current;
     if (!vp) return;
+    setAutoFollow(true); 
+    camState.current.bearing = 0;
+    camState.current.pitch = 45;
+    gsap.to(map3DRef.current, { rotateZ: 0, rotateX: 45, duration: 0.8, ease: "power2.inOut" });
+    gsap.to(compassRef.current, { rotation: 0, duration: 0.8 });
+  };
+  
+  const resetCompass = () => {
+      camState.current.bearing = 0;
+      camState.current.pitch = 45;
+      gsap.to(map3DRef.current, { rotateZ: 0, rotateX: 45, duration: 0.6, ease: "back.out(1.2)" });
+      gsap.to(compassRef.current, { rotation: 0, duration: 0.6, ease: "back.out(1.2)" });
+  };
+
+  const handleZoom = (direction: 'in' | 'out') => {
+    setAutoFollow(false);
+    const { zoom, x, y } = camState.current;
+    let newZoom = direction === 'in' ? zoom * 1.35 : zoom / 1.35;
+    const clamped = clampCamera(x, y, newZoom);
     
-    setCamera({ 
-      x: vp.clientWidth / 2 - snappedPos.x * zoom, 
-      y: vp.clientHeight / 2 - snappedPos.y * zoom 
+    gsap.to(cameraLayerRef.current, {
+        scale: clamped.z,
+        x: clamped.x,
+        y: clamped.y,
+        duration: 0.4,
+        ease: "power2.out"
     });
-  }, [snappedPos, zoom]);
+    
+    camState.current.zoom = clamped.z;
+    camState.current.x = clamped.x;
+    camState.current.y = clamped.y;
+  };
 
   if (!originId || !destId) return <div style={{color: 'white', padding: '20px'}}>Invalid Route</div>;
 
   return (
-    // ... (rest of your JSX)
     <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.headerTitle}>{isNavActive ? "Navigation Active" : "Ready to Start"}</h1>
-        <div style={styles.headerSubtitle}>
-          <span style={{ color: isNavActive ? "#22C55E" : "#64748B" }}>●</span> 
-          {isNavActive ? "Live Sensors Tracking" : "Waiting for activation"}
-        </div>
-      </header>
-
       <div style={styles.mapSection}>
-        <div ref={viewportRef} style={styles.viewport}>
-          {/* CAMERA LAYER */}
-          <div style={{
-            ...styles.camera,
-            transform: `translate(${camera.x}px, ${camera.y}px) scale(${zoom})`,
-          }}>
-            <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
-
-            {/* NEW POINTER */}
-            <div style={{
-              position: "absolute",
-              left: snappedPos.x,
-              top: snappedPos.y,
-              transform: `translate(-50%, -50%) rotate(${heading}deg)`,
-              transition: 'transform 0.2s cubic-bezier(0.25, 1, 0.5, 1)', 
-              zIndex: 30,
-              pointerEvents: "none",
-            }}>
-                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                   {/* Arrow Points UP by default (0 deg) */}
-                   <path d="M50 10 L80 90 L50 70 L20 90 L50 10 Z" fill="#3B82F6" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                   {/* Vision Cone */}
-                   <path d="M50 50 L10 10 A 60 60 0 0 1 90 10 Z" fill="url(#vision)" fillOpacity="0.3" transform="translate(0, -10)"/>
-                   <defs>
-                     <linearGradient id="vision" x1="50" y1="50" x2="50" y2="0" gradientUnits="userSpaceOnUse">
-                       <stop stopColor="#3B82F6" stopOpacity="0.6"/>
-                       <stop offset="1" stopColor="#3B82F6" stopOpacity="0"/>
-                     </linearGradient>
-                   </defs>
-                </svg>
+        <div 
+            ref={viewportRef} 
+            style={styles.viewport}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+        >
+          <div ref={map3DRef} style={styles.map3DWrapper}>
+            <div ref={cameraLayerRef} style={styles.camera}>
+                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
+                <div style={{
+                  position: "absolute",
+                  left: snappedPos.x,
+                  top: snappedPos.y,
+                  transform: `translate(-50%, -50%) rotate(${heading}deg)`,
+                  transition: 'transform 0.2s linear', 
+                  zIndex: 30,
+                  pointerEvents: "none",
+                  filter: "drop-shadow(0 4px 6px rgba(0,0,0,0.2))",
+                }}>
+                    <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+                       <defs>
+                         <radialGradient id="vision" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(60 60) rotate(-90) scale(60 60)">
+                            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.4"/>
+                            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0"/>
+                         </radialGradient>
+                         <linearGradient id="arrowGrad" x1="60" y1="20" x2="60" y2="100" gradientUnits="userSpaceOnUse">
+                            <stop stopColor="#F59E0B" />
+                            <stop offset="1" stopColor="#D97706" /> 
+                         </linearGradient>
+                       </defs>
+                       <path d="M60 60 L20 10 Q 60 -10 100 10 Z" fill="url(#vision)"/>
+                       <path d="M60 20 L85 90 L60 75 L35 90 L60 20 Z" fill="url(#arrowGrad)" stroke="white" strokeWidth="3" strokeLinejoin="round" />
+                       <circle cx="60" cy="70" r="6" fill="white" />
+                    </svg>
+                </div>
+                
+                {/* Floating Destination Labels */}
+                {destinationMarkers.map((dest) => {
+                    const dist = Math.hypot(snappedPos.x - dest.x, snappedPos.y - dest.y);
+                    const isNear = dist < 250; 
+                    
+                    return (
+                        <div key={dest.name} style={{
+                            position: "absolute",
+                            left: dest.x,
+                            top: dest.y,
+                            transform: `translate(-50%, -100%) scale(${isNear ? 1.2 : 1})`,
+                            marginTop: "-25px",
+                            background: isNear ? colors.accent : "rgba(255, 255, 255, 0.9)",
+                            color: isNear ? "white" : colors.primary,
+                            padding: "6px 12px",
+                            borderRadius: "12px",
+                            boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
+                            fontSize: isNear ? "14px" : "12px",
+                            fontWeight: 700,
+                            pointerEvents: "none",
+                            zIndex: isNear ? 45 : 40,
+                            whiteSpace: "nowrap",
+                            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                            opacity: 0.9,
+                            border: `2px solid ${isNear ? "white" : colors.secondary}`,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            // Ensure it's readable by rotating counter to map rotation if needed, 
+                            // but currently map rotates the layer, so labels rotate with it.
+                            // To keep text upright, we would need to rotate it back:
+                            // transform: `translate(-50%, -100%) rotate(${-heading}deg) ...`
+                            // But here 'heading' is user heading. 
+                            // The map rotation is controlled by map3DRef / camState.current.bearing.
+                            // If user wants labels to always be upright, we'd need access to the current map rotation state.
+                            // However, simplified approach is fine for now.
+                        }}>
+                           <span>📍</span> {dest.name}
+                        </div>
+                    );
+                })}
             </div>
-          </div> 
+          </div>
+          
+          <div style={{ position: "absolute", top: "100px", right: "20px", display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 200, alignItems: 'flex-end' }}>
+            
+            <ControlButton 
+                label="Reset North" 
+                onClick={resetCompass}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "50%",
+                   backgroundColor: "white", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                   border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+            >
+               <div ref={compassRef} style={{position:"relative", height:"40px", width:"40px", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                    <div style={{width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "16px solid #EF4444", position:"absolute", top: "2px"}} />
+                    <div style={{width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "16px solid #94A3B8", position:"absolute", bottom: "2px"}} />
+                </div>
+            </ControlButton>
+
+            <ControlButton 
+                label="Recenter" 
+                onClick={handleRecenter}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "16px",
+                   backgroundColor: autoFollow ? colors.accent : "rgba(255, 255, 255, 0.9)",
+                   color: autoFollow ? "white" : colors.primary,
+                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                   fontSize: "24px", display: "flex", alignItems: "center", justifyContent: "center",
+                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                }}
+            >
+               ⌖
+            </ControlButton>
+
+            <ControlButton 
+                label="Zoom In" 
+                onClick={() => handleZoom('in')}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "16px",
+                   backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
+                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                   fontSize: "24px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center",
+                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                }}
+            >
+               +
+            </ControlButton>
+
+            <ControlButton 
+                label="Zoom Out" 
+                onClick={() => handleZoom('out')}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "16px",
+                   backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
+                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                   fontSize: "24px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center",
+                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                }}
+            >
+               −
+            </ControlButton>
+
+            <ControlButton 
+                label={isMuted ? "Unmute Voice" : "Mute Voice"} 
+                onClick={() => setIsMuted(!isMuted)}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "16px",
+                   backgroundColor: isMuted ? "#EF4444" : "rgba(255, 255, 255, 0.9)",
+                   color: isMuted ? "white" : colors.primary,
+                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                   fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center",
+                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                }}
+            >
+               {isMuted ? (
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor"/>
+                   <line x1="16" y1="8" x2="20" y2="12" stroke="currentColor" strokeWidth="2"/>
+                   <line x1="20" y1="8" x2="16" y2="12" stroke="currentColor" strokeWidth="2"/>
+                 </svg>
+               ) : (
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor"/>
+                   <path d="M16 9C16.5523 9 17 9.44772 17 10V14C17 14.5523 16.5523 15 16 15" stroke="currentColor" strokeWidth="2"/>
+                   <path d="M19 7C20.1046 7 21 7.89543 21 9V15C21 16.1046 20.1046 17 19 17" stroke="currentColor" strokeWidth="2"/>
+                 </svg>
+               )}
+            </ControlButton>
+          </div>
         </div>
 
-        {/* Turn Correction Popup */}
         {showTurnPopup && isPaused && (
             <div style={styles.popupOverlay}>
                 <div style={styles.popup}>
                     <div style={styles.popupTitle}>Check Position 📍</div>
-                    <div style={styles.popupText}>
-                        Are you at the <strong>Corner</strong>?
-                        <br/>
-                        <span style={{fontSize: '12px', opacity: 0.8}}>Re-align pointer to this corner?</span>
-                    </div>
+                    <div style={styles.popupText}>Are you at the <strong>Corner</strong>?</div>
                     <div style={styles.popupButtons}>
                         <button style={{...styles.btnSecondary, minWidth: '80px', flex:1}} onClick={handleSkipTurn}>No (Skip)</button>
                         <button style={{...styles.btnPrimary, minWidth: '80px', flex:1}} onClick={handleConfirmTurn}>Yes (Align)</button>
@@ -687,7 +1087,6 @@ const MapView = () => {
             </div>
         )}
 
-        {/* Deviation Warning Overlay */}
         {isDeviated && (
             <div style={{
                 position: "absolute", top: "100px", left: "50%", transform: "translateX(-50%)", 
@@ -699,49 +1098,33 @@ const MapView = () => {
                 <span>⚠️ Off Route!</span>
                 <button 
                   onClick={handleReroute}
-                  style={{
-                      background: "white", color: "#EF4444", border: "none", 
-                      padding: "6px 14px", borderRadius: "16px", fontWeight: "bold", cursor: "pointer"
-                  }}
+                  style={{ background: "white", color: "#EF4444", border: "none", padding: "6px 14px", borderRadius: "16px", fontWeight: "bold" }}
                 >
                   Reroute ⟳
                 </button>
             </div>
         )}
 
-        {/* UI OVERLAY (Bottom Sheet) */}
         <div style={styles.bottomSheet}>
           <div style={styles.infoRow}>
             {!isNavActive ? (
-              <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>
-                🚀 START LIVE TRACKING
-              </button>
+              <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>🚀 START LIVE TRACKING</button>
             ) : (
               <div style={styles.distanceBadge}>📍 {originId} → {destId}</div>
             )}
           </div>
 
-          {/* Navigation Dashboard */}
           {isNavActive && (
             <div style={styles.navPanel}>
-              {/* Direction Icon */}
               <div style={styles.navIconBox}>
-                  {navState.turnType === 'left' ? '↰' : 
-                   navState.turnType === 'right' ? '↱' : 
-                   navState.turnType === 'finish' ? '🏁' : '↑'}
+                  {navState.turnType === 'left' ? '↰' : navState.turnType === 'right' ? '↱' : navState.turnType === 'finish' ? '🏁' : '↑'}
               </div>
-
-              {/* Metrics */}
               <div style={styles.navInfoBox}>
                   <div style={styles.navMainText}>
-                    {navState.turnType === 'straight' 
-                      ? "Go Straight" 
-                      : navState.turnType === 'finish' 
-                      ? "Arrived at destination"
-                      : `Turn ${navState.turnType === 'left' ? 'Left' : 'Right'} in ${navState.distToTurn.toFixed(0)}m`}
+                    {navState.turnType === 'straight' ? "Go Straight" : navState.turnType === 'finish' ? "Arrived" : `Turn ${navState.turnType === 'left' ? 'Left' : 'Right'} in ${navState.distToTurn.toFixed(0)}m`}
                   </div>
                   <div style={styles.navSubText}>
-                    <span>🏃 {(currentSpeed * 3.6).toFixed(1)} km/h</span> {/* m/s to km/h */}
+                    <span>🏃 {(currentSpeed * 3.6).toFixed(1)} km/h</span>
                     <span>📍 {navState.totalRem.toFixed(0)}m left</span>
                   </div>
               </div>
@@ -750,7 +1133,7 @@ const MapView = () => {
 
           <div style={styles.actionsRow}>
             <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
-            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Reset Pos</button>
+            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Restart</button>
           </div>
         </div>
       </div>
