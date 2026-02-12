@@ -57,12 +57,12 @@ const NavigationPage = () => {
     const destFromUrl = searchParams.get("dest");
 
     if (originFromUrl) {
-      const originMatch = rooms.find((r) => r.id === originFromUrl);
+      const originMatch = rooms.find((r) => r.name === originFromUrl);
       if (originMatch) setOrigin(originMatch);
     }
 
     if (destFromUrl) {
-      const destMatch = rooms.find((r) => r.id === destFromUrl);
+      const destMatch = rooms.find((r) => r.name === destFromUrl);
       if (destMatch) setDestination(destMatch);
     }
   }, [searchParams, rooms]);
@@ -81,7 +81,7 @@ const NavigationPage = () => {
 
   const startNavigation = () => {
     if (!origin || !destination) return;
-    navigate(`/map-view?origin=${origin.id}&dest=${destination.id}`);
+    navigate(`/map-view?origin=${origin.name}&dest=${destination.name}`);
   };
 
   // Lock body scroll when modal is open
@@ -226,7 +226,9 @@ const NavigationPage = () => {
                 filteredRooms.map((room) => (
                   <button
                     key={room.id}
-                    className="room-item"
+                    className={`room-item ${
+                      room.id === (activePicker === "origin" ? origin?.id : destination?.id) ? "selected" : ""
+                    }`}
                     onClick={() => selectRoom(room)}
                   >
                     <div className="room-icon-box">

@@ -517,7 +517,12 @@ html {
     justify-content: center;
 }
 
-.room-item:hover .room-icon-box {
+.room-item.selected {
+    background: #dbeafe;
+    border-radius: 16px;
+}
+
+.room-item.selected .room-icon-box {
     background: #3b82f6;
     color: white;
 }

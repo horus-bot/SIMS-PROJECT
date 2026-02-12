@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import QRCode from "qrcode";
-import floorData from "../data/floor_1.json";
+import floorData from "../data/test_1.json";
 
 type Room = {
   id: string;
@@ -20,8 +20,8 @@ const QRGenerator = () => {
 
   // ---- ROOMS ----
   const rooms: Room[] = useMemo(() => {
-    if (!floorData?.destinations) return [];
-    return Object.entries(floorData.destinations).map(([id, data]: any) => ({
+    if (!floorData?.destination) return [];
+    return Object.entries(floorData.destination).map(([id, data]: any) => ({
       id,
       name: data.name || data.label || id,
     }));
