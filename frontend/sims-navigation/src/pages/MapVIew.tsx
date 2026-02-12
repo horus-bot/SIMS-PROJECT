@@ -32,442 +32,42 @@ const MAP_W = 4101;
 const MAP_H = 3025;
 
 // --- Styles Object (Inline CSS) ---
-// Color Palette (Light "Premium" Mode)
-const colors = {
+// Color Palettes
+const lightColors = {
   primary: "#1E293B",
   primaryDark: "#0F172A",
   secondary: "#10B981",
   accent: "#3B82F6",
-  background: "#F8FAFC",  // Light premium background
-  surface: "#FFFFFF",     // Clean white surface
-  text: "#0F172A",        // Dark rich text
+  background: "#F8FAFC",
+  surface: "#FFFFFF",
+  text: "#0F172A",
   textSecondary: "#64748B",
-  lightBlue: "#E0F2FE",   // Soft blue for UI
-  lightGreen: "#ECFDF5",  
+  lightBlue: "#E0F2FE",
+  lightGreen: "#ECFDF5",
   lightPurple: "#FAF5FF",
+  border: "#E2E8F0",
+  glass: "rgba(255, 255, 255, 0.85)",
+  glassBorder: "rgba(0,0,0,0.05)",
 };
 
-const styles: Record<string, CSSProperties> = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100vh",
-    width: "100%",
-    background: colors.background,
-    color: colors.text,
-    fontFamily:
-      '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    overflow: "auto",
-    position: "relative",
-    inset: "initial",
-  },
-  header: {
-    background: "rgba(255, 255, 255, 0.85)", // Light Frosted Glass
-    backdropFilter: "blur(12px)",
-    padding: "16px 20px",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
-    zIndex: 30,
-    flexShrink: 0,
-    borderBottom: `1px solid rgba(0,0,0,0.05)`,
-  },
-  headerTitle: {
-    fontSize: "18px",
-    fontWeight: 700,
-    color: colors.primaryDark,
-    margin: 0,
-    lineHeight: 1.2,
-  },
-  headerSubtitle: {
-    fontSize: "14px",
-    color: colors.secondary,
-    marginTop: "4px",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-  
-  mapSection: {
-    // Full screen map
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#F1F5F9", 
-    overflow: "hidden",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 0, // Behind controls
-  },
-
-  menuSection: {
-    // Floating Bottom Sheet
-    position: "absolute",
-    bottom: "20px", 
-    left: "20px",
-    right: "20px",
-    backgroundColor: "white", 
-    borderRadius: "24px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between", 
-    padding: "16px",
-    gap: "12px",
-    zIndex: 100, // Above map
-    boxShadow: "0 10px 40px rgba(0,0,0,0.15)", // Stronger shadow for floating effect
-  },
-
-  stepBtnPrimary: {
-    flex: 2, // Takes more space
-    height: "50px", // Standard touch target
-    borderRadius: "25px",
-    border: "none",
-    fontSize: "16px",
-    fontWeight: 700,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    backgroundColor: "#2563EB", // Google Blue-ish
-    color: "white",
-    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.3)",
-    transition: "transform 0.1s ease",
-  },
-
-  stepBtnSecondary: {
-    width: "50px", // Circle button
-    height: "50px",
-    flex: "none", // Don't stretch
-    borderRadius: "25px", // Circle
-    border: "1px solid #E5E7EB",
-    fontSize: "24px", // Larger icon
-    fontWeight: 600,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F9FAFB",
-    color: "#4B5563",
-    boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-    transition: "all 0.2s ease",
-  },
-
-  // ✅ viewport frame
-  viewport: {
-    width: "100%",
-    height: "100%",
-    position: "relative",
-    overflow: "hidden",
-    // Premium Light Gradient
-    background: "radial-gradient(circle at 50% 50%, #ffffff 0%, #f1f5f9 60%, #e2e8f0 100%)",
-    perspective: "1200px",
-  },
-
-  // ✅ 3D container for tilt
-  map3DWrapper: {
-    width: "100%",
-    height: "100%",
-    transformStyle: "preserve-3d",
-    willChange: "transform",
-  },
-
-  // ✅ camera layer (we move this using translate + scale)
-  camera: {
-    position: "absolute",
-    inset: 0,
-    transformOrigin: "0 0",
-    // transition handled inline in component
-    willChange: "transform",
-    // Filter removed for performance
-  },
-
-  recenterBtn: {
-    position: "absolute",
-    bottom: "220px",
-    right: "20px",
-    width: "50px",
-    height: "50px",
-    borderRadius: "16px",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    backdropFilter: "blur(8px)",
-    border: `1px solid ${colors.secondary}`,
-    color: colors.primary,
-    fontSize: "24px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-    zIndex: 50,
-  },
-
-  floorPill: {
-    position: "absolute",
-    top: "20px",
-    right: "20px",
-    backgroundColor: colors.primary,
-    padding: "8px 16px",
-    borderRadius: "50px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-    fontWeight: 700,
-    color: colors.surface,
-    fontSize: "14px",
-    zIndex: 10,
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-
-  zoomControls: {
-    position: "absolute",
-    bottom: "280px",
-    right: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    zIndex: 50, // Increased z-index
-  },
-  zoomBtn: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "12px",
-    backgroundColor: colors.surface,
-    border: `1px solid ${colors.secondary}`,
-    color: colors.text,
-    fontSize: "20px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-    userSelect: "none",
-  },
-
-  popupOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-  },
-  popup: {
-    background: "white",
-    padding: "24px",
-    borderRadius: "16px",
-    width: "85%",
-    maxWidth: "320px",
-    textAlign: "center",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-  },
-  popupTitle: {
-    fontSize: "18px",
-    fontWeight: "bold",
-    marginBottom: "12px",
-    color: "#1E293B",
-  },
-  popupText: {
-    fontSize: "14px",
-    color: "#64748B",
-    marginBottom: "20px",
-  },
-  popupButtons: {
-    display: "flex",
-    gap: "12px",
-    justifyContent: "center",
-  },
-
-  bottomSheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: "24px",
-    borderTopRightRadius: "24px",
-    padding: "20px 18px 26px 18px",
-    boxShadow: "0 -4px 20px rgba(0,0,0,0.15)",
-    zIndex: 30,
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px",
-    borderTop: `4px solid ${colors.primary}`,
-    maxHeight: "40vh",
-    overflowY: "auto",
-  },
-
-  infoRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-  },
-
-  distanceBadge: {
-    background: colors.accent,
-    color: colors.surface,
-    padding: "6px 14px",
-    borderRadius: "20px",
-    fontWeight: 700,
-    fontSize: "14px",
-    boxShadow: `0 2px 6px rgba(59,130,246, 0.3)`,
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    whiteSpace: "nowrap",
-  },
-
-  locationsGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto 1fr",
-    alignItems: "center",
-    gap: "12px",
-    backgroundColor: colors.lightGreen,
-    padding: "14px",
-    borderRadius: "16px",
-    border: `1px solid ${colors.secondary}`,
-  },
-  locationNode: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    minWidth: 0,
-  },
-  label: {
-    fontSize: "11px",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    color: colors.secondary,
-    fontWeight: 600,
-  },
-  value: {
-    fontSize: "15px",
-    fontWeight: 600,
-    color: colors.text,
-    lineHeight: 1.3,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "140px",
-  },
-  arrowIcon: {
-    color: colors.primary,
-    fontSize: "18px",
-    fontWeight: 900,
-  },
-
-  actionsRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
-  },
-
-  btnSecondary: {
-    padding: "14px",
-    borderRadius: "14px",
-    border: `1px solid ${colors.secondary}`,
-    backgroundColor: colors.lightGreen,
-    color: "#065F46",
-    fontWeight: 700,
-    fontSize: "15px",
-    cursor: "pointer",
-    textAlign: "center",
-  },
-  btnPrimary: {
-    padding: "14px",
-    borderRadius: "14px",
-    border: "none",
-    background: colors.primary,
-    color: colors.surface,
-    fontWeight: 800,
-    fontSize: "15px",
-    cursor: "pointer",
-    textAlign: "center",
-    boxShadow: `0 4px 12px rgba(0,0,0, 0.25)`,
-  },
-
-  // Navigation Panel
-  navPanel: {
-    display: "flex", 
-    flexDirection: "row",
-    alignItems: "center",
-    gap: "16px",
-    padding: "16px 20px", 
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: "16px",
-    border: `1px solid rgba(0,0,0,0.1)`,
-    backdropFilter: "blur(10px)",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
-  },
-  
-  navIconBox: {
-    width: "56px", 
-    height: "56px",
-    borderRadius: "12px",
-    backgroundColor: colors.surface,
-    color: colors.primary,
-    fontSize: "32px", 
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-  },
-
-  navInfoBox: {
-     display: "flex",
-     flexDirection: "column",
-     gap: "4px",
-     flex: 1,
-  },
-  navMainText: {
-     fontSize: "18px",
-     fontWeight: 700,
-     color: colors.primaryDark,
-  },
-  navSubText: {
-     fontSize: "14px",
-     color: colors.textSecondary, 
-     display: "flex", 
-     gap: "12px"
-  },
-
-  pointerDot: {
-    position: "absolute",
-    width: "18px",
-    height: "18px",
-    borderRadius: "50%",
-    background: "#F97316",
-    border: "3px solid white",
-    boxShadow: "0 6px 16px rgba(0,0,0,0.25)",
-    zIndex: 20,
-    transform: "translate(-50%, -50%)",
-    pointerEvents: "none",
-  },
-  
-  controlLabel: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)", // Light semi-transparent bg
-    color: "#1E293B", // Dark text
-    padding: "4px 8px",
-    borderRadius: "6px",
-    fontSize: "12px",
-    fontWeight: 600,
-    backdropFilter: "blur(4px)",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    whiteSpace: "nowrap",
-    pointerEvents: "none",
-    border: "1px solid rgba(0,0,0,0.05)",
-  },
+const darkColors = {
+  primary: "#F1F5F9",        // Light text for dark mode
+  primaryDark: "#E2E8F0",    // Slightly darker text
+  secondary: "#34D399",      // Bright green
+  accent: "#60A5FA",         // Bright blue
+  background: "#0F172A",     // Deep dark blue/slate
+  surface: "#1E293B",        // Dark surface
+  text: "#F8FAFC",           // White text
+  textSecondary: "#94A3B8",  // Slate text
+  lightBlue: "#172554",      // Dark blue bg
+  lightGreen: "#064E3B",     // Dark green bg
+  lightPurple: "#581C87",    // Dark purple bg
+  border: "#334155",         // Dark border
+  glass: "rgba(30, 41, 59, 0.85)", // Dark glass
+  glassBorder: "rgba(255,255,255,0.1)",
 };
 
 type NodeType = { x: number; y: number; type: string };
-
-
 
 // Hover Button Helper
 const ControlButton = ({ label, children, onClick, style }: { label: string, children: React.ReactNode, onClick: () => void, style?: React.CSSProperties }) => {
@@ -479,11 +79,18 @@ const ControlButton = ({ label, children, onClick, style }: { label: string, chi
             onMouseLeave={() => setHover(false)}
         >
             <span style={{
-                ...styles.controlLabel,
+                ...style,
+                backgroundColor: "transparent", 
+                boxShadow: "none", 
+                border: "none",
+                width: "auto", height: "auto",
+                // Helper label styles
+                background: "rgba(0,0,0,0.7)", color: "white", padding: "4px 8px", borderRadius: "6px",
                 opacity: hover ? 1 : 0,
                 transform: hover ? 'translateX(0px)' : 'translateX(10px)',
                 transition: 'all 0.2s ease-out',
-                visibility: hover ? 'visible' : 'hidden'
+                visibility: hover ? 'visible' : 'hidden',
+                marginRight: '12px', pointerEvents: 'none', fontSize: '12px'
             }}>{label}</span>
             
             <button 
@@ -507,17 +114,22 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
     onConfirm: () => void; 
     onReject: () => void; 
 }) => {
-    // Auto-dismiss after 3s
+    const onRejectRef = useRef(onReject);
+    onRejectRef.current = onReject;
+
+    // Auto-dismiss after 3s - Fixed Dependency
     useEffect(() => {
-        const timer = setTimeout(onReject, 3000);
+        const timer = setTimeout(() => {
+            if (onRejectRef.current) onRejectRef.current();
+        }, 3000);
         return () => clearTimeout(timer);
-    }, [onReject]);
+    }, []);
 
     return (
         <div 
             style={{
-                position: 'absolute', // Position absolute to CONTAINER (not map)
-                bottom: '120px',      // Clears the footer menu (20px + ~80px height)
+                position: 'absolute',
+                bottom: '120px',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
@@ -527,7 +139,7 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                 borderRadius: '20px',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                 padding: '16px',
-                zIndex: 2000,         // Highest z-index
+                zIndex: 2000,
                 border: '1px solid rgba(255,255,255,0.5)',
                 overflow: 'hidden'
             }}
@@ -640,16 +252,21 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
     onConfirm: () => void; 
     onReject: () => void; 
 }) => {
+    const onRejectRef = useRef(onReject);
+    onRejectRef.current = onReject;
+
     useEffect(() => {
-        const timer = setTimeout(onReject, 3000);
+        const timer = setTimeout(() => {
+            if (onRejectRef.current) onRejectRef.current();
+        }, 3000);
         return () => clearTimeout(timer);
-    }, [onReject]);
+    }, []);
 
     return (
         <div 
             style={{
                 position: 'absolute',
-                bottom: '120px', // Raised to clear footer
+                bottom: '120px', 
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
@@ -751,6 +368,94 @@ const MapView = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [isNavActive, setIsNavActive] = useState(false);
+  // Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  
+  // Derived Colors & Styles
+  const colors = isDarkMode ? darkColors : lightColors;
+
+  const styles = useMemo(() => ({
+    container: {
+      display: "flex",
+      flexDirection: "column",
+      height: "100vh",
+      width: "100%",
+      background: colors.background,
+      color: colors.text,
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      overflow: "auto",
+      position: "relative" as const,
+      inset: "initial",
+    } as CSSProperties,
+    header: {
+      background: colors.glass,
+      backdropFilter: "blur(12px)",
+      padding: "16px 20px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
+      zIndex: 30,
+      flexShrink: 0,
+      borderBottom: `1px solid ${colors.glassBorder}`,
+    },
+    mapSection: {
+      position: "absolute" as const,
+      top: 0, left: 0, right: 0, bottom: 0,
+      width: "100%", height: "100%",
+      backgroundColor: isDarkMode ? "#020617" : "#F1F5F9", 
+      overflow: "hidden",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 0,
+    },
+    menuSection: {
+      position: "absolute" as const,
+      bottom: "20px", left: "20px", right: "20px",
+      backgroundColor: colors.surface, 
+      borderRadius: "24px",
+      display: "flex", alignItems: "center", justifyContent: "space-between", 
+      padding: "16px", gap: "12px",
+      zIndex: 100,
+      boxShadow: isDarkMode ? "0 10px 40px rgba(0,0,0,0.5)" : "0 10px 40px rgba(0,0,0,0.15)",
+      border: `1px solid ${colors.border}`,
+    },
+    stepBtnPrimary: {
+      flex: 2, height: "50px", borderRadius: "25px", border: "none",
+      fontSize: "16px", fontWeight: 700, cursor: "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+      backgroundColor: colors.accent,
+      color: "#FFFFFF",
+      boxShadow: `0 4px 12px ${isDarkMode ? 'rgba(96, 165, 250, 0.4)' : 'rgba(37, 99, 235, 0.3)'}`,
+      transition: "transform 0.1s ease",
+    },
+    stepBtnSecondary: {
+      width: "50px", height: "50px", flex: "none", borderRadius: "25px",
+      border: `1px solid ${colors.border}`,
+      fontSize: "24px", fontWeight: 600, cursor: "pointer",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      backgroundColor: isDarkMode ? colors.background : "#F9FAFB",
+      color: colors.textSecondary,
+      boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+      transition: "all 0.2s ease",
+    },
+    viewport: {
+      width: "100%", height: "100%", position: "relative" as const, overflow: "hidden",
+      background: isDarkMode ? "radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%)" : "radial-gradient(circle at 50% 50%, #ffffff 0%, #f1f5f9 60%, #e2e8f0 100%)",
+      perspective: "1200px",
+    },
+    map3DWrapper: {
+      width: "100%", height: "100%", transformStyle: "preserve-3d" as const, willChange: "transform",
+    },
+    camera: {
+      position: "absolute" as const, inset: 0, transformOrigin: "0 0", willChange: "transform",
+    },
+    controlLabel: {
+      backgroundColor: colors.glass,
+      color: colors.text,
+      padding: "4px 8px", borderRadius: "6px", fontSize: "12px",
+      fontWeight: 600, backdropFilter: "blur(4px)",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+      whiteSpace: "nowrap", pointerEvents: "none",
+      border: `1px solid ${colors.glassBorder}`,
+    },
+  }), [colors, isDarkMode]);
 
   const rawOrigin = searchParams.get("origin");
   const rawDest = searchParams.get("dest");
@@ -1326,7 +1031,7 @@ const MapView = () => {
         >
           <div ref={map3DRef} style={styles.map3DWrapper}>
             <div ref={cameraLayerRef} style={styles.camera}>
-                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
+                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} isDarkMode={isDarkMode} />
                 <div style={{
                   position: "absolute",
                   left: snappedPos.x,
@@ -1402,6 +1107,22 @@ const MapView = () => {
           </div>
           
           <div style={{ position: "absolute", top: "100px", right: "20px", display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 200, alignItems: 'flex-end' }}>
+            
+            {/* Dark Mode Toggle */}
+            <ControlButton 
+                label={isDarkMode ? "Light Mode" : "Dark Mode"} 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                style={{
+                   width: "50px", height: "50px", borderRadius: "16px",
+                   backgroundColor: isDarkMode ? "#334155" : "rgba(255, 255, 255, 0.9)",
+                   color: isDarkMode ? "#FCD34D" : "#475569", // Yellow moon or slate sun
+                   backdropFilter: "blur(8px)", border: `1px solid ${isDarkMode ? "rgba(255,255,255,0.1)" : colors.border}`,
+                   fontSize: "22px", display: "flex", alignItems: "center", justifyContent: "center",
+                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                }}
+            >
+               {isDarkMode ? "🌙" : "☀️"}
+            </ControlButton>
             
             {/* Speed & Distance Buttons (Only when navigating) */}
             {isNavActive && (
