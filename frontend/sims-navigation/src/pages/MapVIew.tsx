@@ -87,15 +87,64 @@ const styles: Record<string, CSSProperties> = {
   },
   
   mapSection: {
-    flex: 1,
+    flex: 4, // Takes ~80% of remaining space
     width: "100%",
-    height: "100%",
     position: "relative",
-    backgroundColor: "#F1F5F9", // Soft light gray void
+    backgroundColor: "#F1F5F9", 
     overflow: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  menuSection: {
+    flex: 1, // Takes ~20% of remaining space
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderTop: "1px solid rgba(0,0,0,0.06)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 24px",
+    gap: "16px",
+    zIndex: 50,
+    boxShadow: "0 -4px 20px rgba(0,0,0,0.05)",
+    position: "relative",
+  },
+
+  stepBtnPrimary: {
+    flex: 1,
+    height: "56px",
+    borderRadius: "28px",
+    border: "none",
+    fontSize: "16px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    backgroundColor: colors.primary,
+    color: "white",
+    boxShadow: "0 4px 12px rgba(30, 41, 59, 0.2)",
+    transition: "transform 0.1s ease",
+  },
+
+  stepBtnSecondary: {
+    flex: 1,
+    height: "56px",
+    borderRadius: "28px",
+    border: `1px solid ${colors.textSecondary}`,
+    fontSize: "16px",
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    backgroundColor: "transparent",
+    color: colors.textSecondary,
+    transition: "background-color 0.2s ease",
   },
 
   // ✅ viewport frame
@@ -449,23 +498,29 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
     onConfirm: () => void; 
     onReject: () => void; 
 }) => {
+    // Auto-dismiss after 3s
+    useEffect(() => {
+        const timer = setTimeout(onReject, 3000);
+        return () => clearTimeout(timer);
+    }, [onReject]);
+
     return (
         <div 
             style={{
-                position: 'fixed',
-                bottom: '24px',
+                position: 'absolute', // Position absolute to mapSection
+                bottom: '30px',      // Above footer
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
-                maxWidth: '400px',
-                backgroundColor: 'white',
-                borderRadius: '16px',
-                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                maxWidth: '380px',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '20px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                 padding: '16px',
-                zIndex: 50,
-                transition: 'all 0.3s ease-out',
-                opacity: 1,
-                animation: 'none'
+                zIndex: 1000,
+                border: '1px solid rgba(255,255,255,0.5)',
+                overflow: 'hidden'
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -473,47 +528,53 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                     src={image}
                     alt={room}
                     style={{
-                        width: '80px',
-                        height: '80px',
-                        borderRadius: '12px',
-                        objectFit: 'cover'
+                        width: '70px',
+                        height: '70px',
+                        borderRadius: '16px',
+                        objectFit: 'cover',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                     }}
                 />
 
-                <div style={{ marginLeft: '16px' }}>
+                <div style={{ marginLeft: '16px', flex: 1 }}>
                     <p style={{
                         color: '#6B7280',
-                        fontSize: '14px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
                         margin: '0 0 4px 0'
                     }}>
-                        You might be near
+                        Check Location
                     </p>
                     <p style={{
-                        fontSize: '20px',
-                        fontWeight: 600,
+                        fontSize: '18px',
+                        fontWeight: 700,
                         margin: 0,
-                        color: '#111827'
+                        color: '#111827',
+                        lineHeight: 1.2
                     }}>
                         {room}
                     </p>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', position: 'relative', zIndex: 2 }}>
                 <button
                     onClick={onReject}
                     style={{
                         flex: 1,
                         padding: '12px',
                         borderRadius: '12px',
-                        backgroundColor: '#F3F4F6',
+                        backgroundColor: 'rgba(243, 244, 246, 0.8)',
                         color: '#374151',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         border: 'none',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        fontSize: '14px'
                     }}
                 >
-                    Not Here
+                    Not Here (3s)
                 </button>
 
                 <button
@@ -522,15 +583,40 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                         flex: 1,
                         padding: '12px',
                         borderRadius: '12px',
-                        backgroundColor: '#14B8A6',
+                        backgroundColor: '#10B981',
                         color: 'white',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         border: 'none',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
                     }}
                 >
-                    Confirm
+                    Yes, I'm here
                 </button>
+            </div>
+            
+            {/* Progress Bar */}
+            <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                height: '4px',
+                width: '100%',
+                background: '#E5E7EB'
+            }}>
+                <div style={{
+                    height: '100%',
+                    background: '#10B981',
+                    animation: 'countdown 3s linear forwards',
+                    width: '100%'
+                }} />
+                <style>{`
+                    @keyframes countdown {
+                        from { width: 100%; }
+                        to { width: 0%; }
+                    }
+                `}</style>
             </div>
         </div>
     );
@@ -541,89 +627,104 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
     onConfirm: () => void; 
     onReject: () => void; 
 }) => {
+    useEffect(() => {
+        const timer = setTimeout(onReject, 3000);
+        return () => clearTimeout(timer);
+    }, [onReject]);
+
     return (
         <div 
             style={{
-                position: 'fixed',
-                bottom: '24px',
+                position: 'absolute',
+                bottom: '30px',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
-                maxWidth: '400px',
-                backgroundColor: 'white',
-                borderRadius: '16px',
-                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                maxWidth: '360px',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '20px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                 padding: '16px',
-                zIndex: 50,
-                transition: 'all 0.3s ease-out',
-                opacity: 1,
+                zIndex: 1000,
+                border: '1px solid rgba(255,255,255,0.5)',
+                overflow: 'hidden'
             }}
         >
             <div style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '12px',
-                    backgroundColor: '#F3F4F6',
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '16px',
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: '32px'
+                    fontSize: '28px',
+                    color: 'white',
+                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
                 }}>
                     📍
                 </div>
 
-                <div style={{ marginLeft: '16px' }}>
+                <div style={{ marginLeft: '16px', flex: 1 }}>
                     <p style={{
                         color: '#6B7280',
-                        fontSize: '14px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
                         margin: '0 0 4px 0'
                     }}>
-                        Navigation Check
+                        Check Point
                     </p>
                     <p style={{
-                        fontSize: '20px',
-                        fontWeight: 600,
+                        fontSize: '18px',
+                        fontWeight: 700,
                         margin: 0,
-                        color: '#111827'
+                        color: '#111827',
+                        lineHeight: 1.2
                     }}>
                         At the Corner?
                     </p>
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                <button
-                    onClick={onReject}
-                    style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '12px',
-                        backgroundColor: '#F3F4F6',
-                        color: '#374151',
-                        fontWeight: 500,
-                        border: 'none',
-                        cursor: 'pointer'
-                    }}
-                >
-                    Skip
-                </button>
-
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', position: 'relative', zIndex: 2 }}>
                 <button
                     onClick={onConfirm}
                     style={{
                         flex: 1,
                         padding: '12px',
                         borderRadius: '12px',
-                        backgroundColor: '#14B8A6',
+                        backgroundColor: '#F59E0B',
                         color: 'white',
-                        fontWeight: 500,
+                        fontWeight: 600,
                         border: 'none',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
+                        fontSize: '16px'
                     }}
                 >
-                    Align
+                    Yes, Align Me
                 </button>
+            </div>
+            
+             {/* Progress Bar */}
+             <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                height: '4px',
+                width: '100%',
+                background: '#E5E7EB'
+            }}>
+                <div style={{
+                    height: '100%',
+                    background: '#F59E0B',
+                    animation: 'countdown 3s linear forwards',
+                    width: '100%'
+                }} />
             </div>
         </div>
     );
@@ -678,10 +779,39 @@ const MapView = () => {
   // States for actual path and deviation
   const [actualPath, setActualPath] = useState<{x: number, y: number}[]>([]);
   const [isDeviated, setIsDeviated] = useState(false);
+  
+  // --- MANUAL STEP NAVIGATION ---
+  const [stepIndex, setStepIndex] = useState(0);
+  
+  // Reset step index when route changes
+  useEffect(() => {
+    setStepIndex(0);
+  }, [routePath]);
 
   // 1. PDR HOOK
   const [isPaused, setIsPaused] = useState(false);
   const { rawPos, heading, forceSetPos, currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
+
+  const handleNextStep = () => {
+    if (routePath.length === 0) return;
+    const nextIndex = Math.min(stepIndex + 1, routePath.length - 1);
+    setStepIndex(nextIndex);
+    const nodeId = routePath[nextIndex];
+    if (nodeId && nodeMap[nodeId]) {
+        forceSetPos(nodeMap[nodeId].x, nodeMap[nodeId].y);
+    }
+  };
+
+  const handlePrevStep = () => {
+    if (routePath.length === 0) return;
+    const prevIndex = Math.max(stepIndex - 1, 0);
+    setStepIndex(prevIndex);
+    const nodeId = routePath[prevIndex];
+    if (nodeId && nodeMap[nodeId]) {
+        forceSetPos(nodeMap[nodeId].x, nodeMap[nodeId].y);
+    }
+  };
+
 
   // Turn Detection Logic
   const [showTurnPopup, setShowTurnPopup] = useState(false);
@@ -900,29 +1030,7 @@ const MapView = () => {
     }
   }, [snappedPos, isNavActive, destinationMarkers, locationToConfirm]);
 
-  // Auto-dismiss location confirmation after 2 seconds
-  useEffect(() => {
-    if (!locationToConfirm) return;
 
-    const timer = setTimeout(() => {
-      setLocationToConfirm(null);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [locationToConfirm]);
-
-  // Auto-dismiss turn confirmation after 2 seconds
-  useEffect(() => {
-    if (!showTurnPopup) return;
-
-    const timer = setTimeout(() => {
-      setShowTurnPopup(false);
-      setIsPaused(false);
-      setPendingTurnNode(null);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [showTurnPopup]);
 
   const handleConfirmLocation = () => {
     if (locationToConfirm) {
@@ -1488,20 +1596,32 @@ const MapView = () => {
             </div>
         )}
 
-        <div style={styles.bottomSheet}>
-          <div style={styles.infoRow}>
-            {!isNavActive ? (
-              <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>🚀 START LIVE TRACKING</button>
-            ) : (
-              <div style={styles.distanceBadge}>Navigation Active</div>
-            )}
-          </div>
+      </div>
+      
+      {/* Footer Menu - 20% Height */}
+      <div style={styles.menuSection}>
+        {!isNavActive ? (
+          <button 
+            style={{...styles.stepBtnPrimary, fontSize: "18px", textTransform: "uppercase", letterSpacing: "1px"}} 
+            onClick={startNavigation}
+          >
+            🚀 Start Navigation
+          </button>
+        ) : (
+          <>
+            <button style={styles.stepBtnSecondary} onClick={handlePrevStep}>
+                <span style={{fontSize: "20px"}}>←</span> Prev
+            </button>
 
-          <div style={styles.actionsRow}>
-            <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
-            <button style={styles.btnPrimary} onClick={() => forceSetPos(startNode.x, startNode.y)}>Restart</button>
-          </div>
-        </div>
+            <button style={{...styles.stepBtnSecondary, color: colors.primary, borderColor: colors.primary, borderWidth: "2px"}} onClick={() => setIsNavActive(false)}>
+                Stop
+            </button>
+
+            <button style={styles.stepBtnPrimary} onClick={handleNextStep}>
+                Next <span style={{fontSize: "20px"}}>→</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
