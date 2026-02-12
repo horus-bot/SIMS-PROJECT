@@ -959,13 +959,6 @@ const MapView = () => {
     gsap.to(compassRef.current, { rotation: 0, duration: 0.8 });
   };
   
-  const resetCompass = () => {
-      camState.current.bearing = 0;
-      camState.current.pitch = 45;
-      gsap.to(map3DRef.current, { rotateZ: 0, rotateX: 45, duration: 0.6, ease: "back.out(1.2)" });
-      gsap.to(compassRef.current, { rotation: 0, duration: 0.6, ease: "back.out(1.2)" });
-  };
-
   const handleZoom = (direction: 'in' | 'out') => {
     setAutoFollow(false);
     const { zoom, x, y } = camState.current;
