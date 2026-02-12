@@ -340,10 +340,12 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "row",
     alignItems: "center",
     gap: "16px",
-    padding: "16px", 
-    backgroundColor: colors.lightBlue,
+    padding: "16px 20px", 
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderRadius: "16px",
-    border: `1px solid ${colors.secondary}`,
+    border: `1px solid rgba(0,0,0,0.1)`,
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
   },
   
   navIconBox: {
@@ -440,6 +442,193 @@ const ControlButton = ({ label, children, onClick, style }: { label: string, chi
     );
 };
 
+// Location Confirmation Card Component
+const LocationConfirmCard = ({ room, image, onConfirm, onReject }: { 
+    room: string; 
+    image: string; 
+    onConfirm: () => void; 
+    onReject: () => void; 
+}) => {
+    return (
+        <div 
+            style={{
+                position: 'fixed',
+                bottom: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '90%',
+                maxWidth: '400px',
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                padding: '16px',
+                zIndex: 50,
+                transition: 'all 0.3s ease-out',
+                opacity: 1,
+                animation: 'none'
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <img
+                    src={image}
+                    alt={room}
+                    style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '12px',
+                        objectFit: 'cover'
+                    }}
+                />
+
+                <div style={{ marginLeft: '16px' }}>
+                    <p style={{
+                        color: '#6B7280',
+                        fontSize: '14px',
+                        margin: '0 0 4px 0'
+                    }}>
+                        You might be near
+                    </p>
+                    <p style={{
+                        fontSize: '20px',
+                        fontWeight: 600,
+                        margin: 0,
+                        color: '#111827'
+                    }}>
+                        {room}
+                    </p>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <button
+                    onClick={onReject}
+                    style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: '#F3F4F6',
+                        color: '#374151',
+                        fontWeight: 500,
+                        border: 'none',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Not Here
+                </button>
+
+                <button
+                    onClick={onConfirm}
+                    style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: '#14B8A6',
+                        color: 'white',
+                        fontWeight: 500,
+                        border: 'none',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Confirm
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// Turn Confirmation Card Component
+const TurnConfirmCard = ({ onConfirm, onReject }: { 
+    onConfirm: () => void; 
+    onReject: () => void; 
+}) => {
+    return (
+        <div 
+            style={{
+                position: 'fixed',
+                bottom: '24px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '90%',
+                maxWidth: '400px',
+                backgroundColor: 'white',
+                borderRadius: '16px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                padding: '16px',
+                zIndex: 50,
+                transition: 'all 0.3s ease-out',
+                opacity: 1,
+            }}
+        >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '12px',
+                    backgroundColor: '#F3F4F6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '32px'
+                }}>
+                    📍
+                </div>
+
+                <div style={{ marginLeft: '16px' }}>
+                    <p style={{
+                        color: '#6B7280',
+                        fontSize: '14px',
+                        margin: '0 0 4px 0'
+                    }}>
+                        Navigation Check
+                    </p>
+                    <p style={{
+                        fontSize: '20px',
+                        fontWeight: 600,
+                        margin: 0,
+                        color: '#111827'
+                    }}>
+                        At the Corner?
+                    </p>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <button
+                    onClick={onReject}
+                    style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: '#F3F4F6',
+                        color: '#374151',
+                        fontWeight: 500,
+                        border: 'none',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Skip
+                </button>
+
+                <button
+                    onClick={onConfirm}
+                    style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: '#14B8A6',
+                        color: 'white',
+                        fontWeight: 500,
+                        border: 'none',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Align
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const MapView = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -498,6 +687,10 @@ const MapView = () => {
   const [showTurnPopup, setShowTurnPopup] = useState(false);
   const [pendingTurnNode, setPendingTurnNode] = useState<{id: string, x: number, y: number} | null>(null);
   const checkedTurns = useRef<Set<string>>(new Set());
+
+  // Location Confirmation
+  const [locationToConfirm, setLocationToConfirm] = useState<{name: string, pic: string} | null>(null);
+  const shownDestinations = useRef<Set<string>>(new Set());
 
   // Destination Image Modal
   const [selectedDestination, setSelectedDestination] = useState<{name: string, pic: string} | null>(null);
@@ -677,6 +870,74 @@ const MapView = () => {
       return prev;
     });
   }, [snappedPos, isNavActive, routePoints]);
+
+  // Reset shown destinations when navigation starts
+  useEffect(() => {
+    if (isNavActive) {
+      shownDestinations.current.clear();
+    }
+  }, [isNavActive]);
+
+  // Location Confirmation Logic
+  useEffect(() => {
+    if (!isNavActive || locationToConfirm) return; // Don't show if already showing or not navigating
+
+    const nearbyDestinations = destinationMarkers.filter(dest => {
+      const dist = Math.hypot(snappedPos.x - dest.x, snappedPos.y - dest.y);
+      return dist < 150 && dest.pic && !shownDestinations.current.has(dest.name); // Within 150 units, has image, and not shown before
+    });
+
+    if (nearbyDestinations.length > 0) {
+      // Show the closest one
+      const closest = nearbyDestinations.reduce((prev, curr) => {
+        const prevDist = Math.hypot(snappedPos.x - prev.x, snappedPos.y - prev.y);
+        const currDist = Math.hypot(snappedPos.x - curr.x, snappedPos.y - curr.y);
+        return currDist < prevDist ? curr : prev;
+      });
+
+      setLocationToConfirm({ name: closest.name, pic: closest.pic });
+      shownDestinations.current.add(closest.name); // Mark as shown
+    }
+  }, [snappedPos, isNavActive, destinationMarkers, locationToConfirm]);
+
+  // Auto-dismiss location confirmation after 2 seconds
+  useEffect(() => {
+    if (!locationToConfirm) return;
+
+    const timer = setTimeout(() => {
+      setLocationToConfirm(null);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [locationToConfirm]);
+
+  // Auto-dismiss turn confirmation after 2 seconds
+  useEffect(() => {
+    if (!showTurnPopup) return;
+
+    const timer = setTimeout(() => {
+      setShowTurnPopup(false);
+      setIsPaused(false);
+      setPendingTurnNode(null);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [showTurnPopup]);
+
+  const handleConfirmLocation = () => {
+    if (locationToConfirm) {
+      // Find the destination node and reposition
+      const destNode = destinationMarkers.find(d => d.name === locationToConfirm.name);
+      if (destNode) {
+        forceSetPos(destNode.x, destNode.y);
+      }
+    }
+    setLocationToConfirm(null);
+  };
+
+  const handleRejectLocation = () => {
+    setLocationToConfirm(null);
+  };
 
   const handleReroute = () => {
     let minD = Infinity; let closestId = "";
@@ -899,6 +1160,10 @@ const MapView = () => {
   return (
     <div style={styles.container}>
       <div style={styles.mapSection}>
+        {isNavActive && (
+          <>
+          </>
+        )}
         <div 
             ref={viewportRef} 
             style={styles.viewport}
@@ -987,20 +1252,34 @@ const MapView = () => {
           
           <div style={{ position: "absolute", top: "100px", right: "20px", display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 200, alignItems: 'flex-end' }}>
             
-            <ControlButton 
-                label="Reset North" 
-                onClick={resetCompass}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "50%",
-                   backgroundColor: "white", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                   border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-            >
-               <div ref={compassRef} style={{position:"relative", height:"40px", width:"40px", display:"flex", alignItems:"center", justifyContent:"center"}}>
-                    <div style={{width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderBottom: "16px solid #EF4444", position:"absolute", top: "2px"}} />
-                    <div style={{width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "16px solid #94A3B8", position:"absolute", bottom: "2px"}} />
-                </div>
-            </ControlButton>
+            {/* Speed & Distance Buttons (Only when navigating) */}
+            {isNavActive && (
+              <>
+                 <div style={{
+                    width: "50px", height: "50px", borderRadius: "16px",
+                    backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
+                    backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                    fontSize: "10px", fontWeight: "bold", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    pointerEvents: "none"
+                 }}>
+                    <div style={{fontSize: "16px"}}>🏃</div>
+                    <div>{(currentSpeed * 3.6).toFixed(1)}</div>
+                 </div>
+
+                 <div style={{
+                    width: "50px", height: "50px", borderRadius: "16px",
+                    backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
+                    backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
+                    fontSize: "10px", fontWeight: "bold", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    pointerEvents: "none"
+                 }}>
+                    <div style={{fontSize: "16px"}}>📍</div>
+                    <div>{navState.totalRem.toFixed(0)}m</div>
+                 </div>
+              </>
+            )}
 
             <ControlButton 
                 label="Recenter" 
@@ -1071,6 +1350,51 @@ const MapView = () => {
                  </svg>
                )}
             </ControlButton>
+
+            {/* Turn Instruction - Below Icons */}
+            {isNavActive && (
+              <div style={{ marginTop: '10px', marginRight: '30px', width: '260px' }}>
+                <div style={{
+                   backgroundColor: "rgba(255, 255, 255, 0.95)",
+                   backdropFilter: "blur(16px)",
+                   borderRadius: "24px",
+                   padding: "10px",
+                   paddingRight: "24px",
+                   boxShadow: "0 12px 40px rgba(0,0,0,0.12)",
+                   display: "flex",
+                   alignItems: "center",
+                   gap: "16px",
+                   border: "1px solid rgba(255,255,255,0.6)"
+                }}>
+                   {/* Icon Container */}
+                   <div style={{
+                      width: "56px", 
+                      height: "56px", 
+                      borderRadius: "18px", 
+                      background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+                      display: "flex", 
+                      alignItems: "center", 
+                      justifyContent: "center",
+                      color: "white",
+                      fontSize: "28px",
+                      boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)",
+                      flexShrink: 0
+                   }}>
+                      {navState.turnType === 'left' ? '↰' : navState.turnType === 'right' ? '↱' : navState.turnType === 'finish' ? '🏁' : '↑'}
+                   </div>
+                   
+                   {/* Text Info */}
+                   <div style={{display: "flex", flexDirection: "column", gap: "2px"}}>
+                      <span style={{fontSize: "18px", fontWeight: 700, color: colors.primary, lineHeight: 1.2}}>
+                         {navState.turnType === 'left' ? 'Turn Left' : navState.turnType === 'right' ? 'Turn Right' : navState.turnType === 'finish' ? 'Destination' : 'Go Straight'}
+                      </span>
+                      <span style={{fontSize: "14px", color: colors.textSecondary, fontWeight: 500}}>
+                         in <span style={{color: colors.primary, fontWeight: 700}}>{navState.distToTurn.toFixed(0)}</span> meters
+                      </span>
+                   </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1130,17 +1454,20 @@ const MapView = () => {
           </div>
         )}
 
+        {locationToConfirm && (
+            <LocationConfirmCard
+                room={locationToConfirm.name}
+                image={`/${locationToConfirm.pic}`}
+                onConfirm={handleConfirmLocation}
+                onReject={handleRejectLocation}
+            />
+        )}
+
         {showTurnPopup && isPaused && (
-            <div style={styles.popupOverlay}>
-                <div style={styles.popup}>
-                    <div style={styles.popupTitle}>Check Position 📍</div>
-                    <div style={styles.popupText}>Are you at the <strong>Corner</strong>?</div>
-                    <div style={styles.popupButtons}>
-                        <button style={{...styles.btnSecondary, minWidth: '80px', flex:1}} onClick={handleSkipTurn}>No (Skip)</button>
-                        <button style={{...styles.btnPrimary, minWidth: '80px', flex:1}} onClick={handleConfirmTurn}>Yes (Align)</button>
-                    </div>
-                </div>
-            </div>
+            <TurnConfirmCard
+                onConfirm={handleConfirmTurn}
+                onReject={handleSkipTurn}
+            />
         )}
 
         {isDeviated && (
@@ -1166,26 +1493,9 @@ const MapView = () => {
             {!isNavActive ? (
               <button style={{...styles.btnPrimary, width: '100%'}} onClick={startNavigation}>🚀 START LIVE TRACKING</button>
             ) : (
-              <div style={styles.distanceBadge}>📍 {originId} → {destId}</div>
+              <div style={styles.distanceBadge}>Navigation Active</div>
             )}
           </div>
-
-          {isNavActive && (
-            <div style={styles.navPanel}>
-              <div style={styles.navIconBox}>
-                  {navState.turnType === 'left' ? '↰' : navState.turnType === 'right' ? '↱' : navState.turnType === 'finish' ? '🏁' : '↑'}
-              </div>
-              <div style={styles.navInfoBox}>
-                  <div style={styles.navMainText}>
-                    {navState.turnType === 'straight' ? "Go Straight" : navState.turnType === 'finish' ? "Arrived" : `Turn ${navState.turnType === 'left' ? 'Left' : 'Right'} in ${navState.distToTurn.toFixed(0)}m`}
-                  </div>
-                  <div style={styles.navSubText}>
-                    <span>🏃 {(currentSpeed * 3.6).toFixed(1)} km/h</span>
-                    <span>📍 {navState.totalRem.toFixed(0)}m left</span>
-                  </div>
-              </div>
-            </div>
-          )}
 
           <div style={styles.actionsRow}>
             <button style={styles.btnSecondary} onClick={() => navigate("/navigation")}>← Back</button>
