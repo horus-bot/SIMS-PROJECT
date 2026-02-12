@@ -87,35 +87,43 @@ const styles: Record<string, CSSProperties> = {
   },
   
   mapSection: {
-    flex: 4, // Takes ~80% of remaining space
+    // Full screen map
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: "100%",
-    position: "relative",
+    height: "100%",
     backgroundColor: "#F1F5F9", 
     overflow: "hidden",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 0, // Behind controls
   },
 
   menuSection: {
-    flex: 1, // Takes ~20% of remaining space
-    width: "100%",
-    backgroundColor: colors.surface,
-    borderTop: "1px solid rgba(0,0,0,0.06)",
+    // Floating Bottom Sheet
+    position: "absolute",
+    bottom: "20px", 
+    left: "20px",
+    right: "20px",
+    backgroundColor: "white", 
+    borderRadius: "24px",
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    padding: "0 24px",
-    gap: "16px",
-    zIndex: 50,
-    boxShadow: "0 -4px 20px rgba(0,0,0,0.05)",
-    position: "relative",
+    justifyContent: "space-between", 
+    padding: "16px",
+    gap: "12px",
+    zIndex: 100, // Above map
+    boxShadow: "0 10px 40px rgba(0,0,0,0.15)", // Stronger shadow for floating effect
   },
 
   stepBtnPrimary: {
-    flex: 1,
-    height: "56px",
-    borderRadius: "28px",
+    flex: 2, // Takes more space
+    height: "50px", // Standard touch target
+    borderRadius: "25px",
     border: "none",
     fontSize: "16px",
     fontWeight: 700,
@@ -123,28 +131,29 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "10px",
-    backgroundColor: colors.primary,
+    gap: "8px",
+    backgroundColor: "#2563EB", // Google Blue-ish
     color: "white",
-    boxShadow: "0 4px 12px rgba(30, 41, 59, 0.2)",
+    boxShadow: "0 4px 12px rgba(37, 99, 235, 0.3)",
     transition: "transform 0.1s ease",
   },
 
   stepBtnSecondary: {
-    flex: 1,
-    height: "56px",
-    borderRadius: "28px",
-    border: `1px solid ${colors.textSecondary}`,
-    fontSize: "16px",
+    width: "50px", // Circle button
+    height: "50px",
+    flex: "none", // Don't stretch
+    borderRadius: "25px", // Circle
+    border: "1px solid #E5E7EB",
+    fontSize: "24px", // Larger icon
     fontWeight: 600,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "10px",
-    backgroundColor: "transparent",
-    color: colors.textSecondary,
-    transition: "background-color 0.2s ease",
+    backgroundColor: "#F9FAFB",
+    color: "#4B5563",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+    transition: "all 0.2s ease",
   },
 
   // ✅ viewport frame
@@ -507,8 +516,8 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
     return (
         <div 
             style={{
-                position: 'absolute', // Position absolute to mapSection
-                bottom: '30px',      // Above footer
+                position: 'absolute', // Position absolute to CONTAINER (not map)
+                bottom: '120px',      // Clears the footer menu (20px + ~80px height)
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
@@ -518,7 +527,7 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                 borderRadius: '20px',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                 padding: '16px',
-                zIndex: 1000,
+                zIndex: 2000,         // Highest z-index
                 border: '1px solid rgba(255,255,255,0.5)',
                 overflow: 'hidden'
             }}
@@ -543,8 +552,10 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                         fontWeight: 600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
-                        margin: '0 0 4px 0'
+                        margin: '0 0 4px 0',
+                        display: 'flex', alignItems: 'center', gap: '4px'
                     }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                         Check Location
                     </p>
                     <p style={{
@@ -589,9 +600,11 @@ const LocationConfirmCard = ({ room, image, onConfirm, onReject }: {
                         border: 'none',
                         cursor: 'pointer',
                         fontSize: '14px',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
                     }}
                 >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                     Yes, I'm here
                 </button>
             </div>
@@ -636,7 +649,7 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
         <div 
             style={{
                 position: 'absolute',
-                bottom: '30px',
+                bottom: '120px', // Raised to clear footer
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: '90%',
@@ -646,7 +659,7 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
                 borderRadius: '20px',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                 padding: '16px',
-                zIndex: 1000,
+                zIndex: 2000,
                 border: '1px solid rgba(255,255,255,0.5)',
                 overflow: 'hidden'
             }}
@@ -664,7 +677,7 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
                     color: 'white',
                     boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
                 }}>
-                    📍
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
                 </div>
 
                 <div style={{ marginLeft: '16px', flex: 1 }}>
@@ -674,8 +687,10 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
                         fontWeight: 600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
-                        margin: '0 0 4px 0'
+                        margin: '0 0 4px 0',
+                        display: 'flex', alignItems: 'center', gap: '4px'
                     }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
                         Check Point
                     </p>
                     <p style={{
@@ -703,9 +718,11 @@ const TurnConfirmCard = ({ onConfirm, onReject }: {
                         border: 'none',
                         cursor: 'pointer',
                         boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
-                        fontSize: '16px'
+                        fontSize: '16px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
                     }}
                 >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                     Yes, Align Me
                 </button>
             </div>
@@ -1267,6 +1284,32 @@ const MapView = () => {
 
   return (
     <div style={styles.container}>
+      {/* Back Button / Exit */}
+      <button 
+        onClick={() => navigate('/')}
+        style={{
+            position: 'absolute',
+            top: '20px',
+            left: '20px',
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            backgroundColor: 'white',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            fontWeight: 'bold',
+            color: '#374151',
+            cursor: 'pointer',
+            zIndex: 100, // Top level
+        }}
+      >
+        ←
+      </button>
+
       <div style={styles.mapSection}>
         {isNavActive && (
           <>
@@ -1506,7 +1549,8 @@ const MapView = () => {
           </div>
         </div>
 
-        {/* Destination Image Modal */}
+
+        {/* Floating Destination Image Modal */}
         {selectedDestination && (
           <div 
             style={{
@@ -1519,7 +1563,7 @@ const MapView = () => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 1000,
+              zIndex: 2000,
             }}
             onClick={() => setSelectedDestination(null)}
           >
@@ -1561,67 +1605,78 @@ const MapView = () => {
             </div>
           </div>
         )}
-
-        {locationToConfirm && (
-            <LocationConfirmCard
-                room={locationToConfirm.name}
-                image={`/${locationToConfirm.pic}`}
-                onConfirm={handleConfirmLocation}
-                onReject={handleRejectLocation}
-            />
-        )}
-
-        {showTurnPopup && isPaused && (
-            <TurnConfirmCard
-                onConfirm={handleConfirmTurn}
-                onReject={handleSkipTurn}
-            />
-        )}
-
-        {isDeviated && (
-            <div style={{
-                position: "absolute", top: "100px", left: "50%", transform: "translateX(-50%)", 
-                background: "#EF4444", color: "white", padding: "12px 24px", 
-                borderRadius: "30px", fontWeight: "bold", zIndex: 60,
-                boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
-                display: "flex", alignItems: "center", gap: "10px"
-            }}>
-                <span>⚠️ Off Route!</span>
-                <button 
-                  onClick={handleReroute}
-                  style={{ background: "white", color: "#EF4444", border: "none", padding: "6px 14px", borderRadius: "16px", fontWeight: "bold" }}
-                >
-                  Reroute ⟳
-                </button>
-            </div>
-        )}
-
       </div>
+
+      {/* POPUP OVERLAYS - Moved outside mapSection to sit above everything */}
       
-      {/* Footer Menu - 20% Height */}
+      {locationToConfirm && (
+        <LocationConfirmCard
+            room={locationToConfirm.name}
+            image={`/${locationToConfirm.pic}`}
+            onConfirm={handleConfirmLocation}
+            onReject={handleRejectLocation}
+        />
+      )}
+
+      {showTurnPopup && isPaused && (
+        <TurnConfirmCard
+            onConfirm={handleConfirmTurn}
+            onReject={handleSkipTurn}
+        />
+      )}
+
+      {isDeviated && (
+        <div style={{
+            position: "absolute", top: "100px", left: "50%", transform: "translateX(-50%)", 
+            background: "#EF4444", color: "white", padding: "12px 24px", 
+            borderRadius: "30px", fontWeight: "bold", zIndex: 2000,
+            boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+            display: "flex", alignItems: "center", gap: "10px"
+        }}>
+            <span>⚠️ Off Route!</span>
+            <button 
+              onClick={handleReroute}
+              style={{ background: "white", color: "#EF4444", border: "none", padding: "6px 14px", borderRadius: "16px", fontWeight: "bold" }}
+            >
+              Reroute ⟳
+            </button>
+        </div>
+      )}
+      
+      {/* Footer Menu */}
       <div style={styles.menuSection}>
+        {/* Manual Control (Prev) */}
+        <button style={styles.stepBtnSecondary} onClick={handlePrevStep} aria-label="Previous Step">
+             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+
+        {/* Center Toggle: Start Live vs Stop */}
         {!isNavActive ? (
           <button 
-            style={{...styles.stepBtnPrimary, fontSize: "18px", textTransform: "uppercase", letterSpacing: "1px"}} 
+            style={styles.stepBtnPrimary} 
             onClick={startNavigation}
           >
-            🚀 Start Navigation
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            <span>Start Live Tracking</span>
           </button>
         ) : (
-          <>
-            <button style={styles.stepBtnSecondary} onClick={handlePrevStep}>
-                <span style={{fontSize: "20px"}}>←</span> Prev
-            </button>
-
-            <button style={{...styles.stepBtnSecondary, color: colors.primary, borderColor: colors.primary, borderWidth: "2px"}} onClick={() => setIsNavActive(false)}>
-                Stop
-            </button>
-
-            <button style={styles.stepBtnPrimary} onClick={handleNextStep}>
-                Next <span style={{fontSize: "20px"}}>→</span>
-            </button>
-          </>
+          <button 
+            style={{...styles.stepBtnPrimary, backgroundColor: "#FFF1F2", color: "#E11D48", boxShadow: "none", border: "1px solid #FECDD3"}} 
+            onClick={() => setIsNavActive(false)}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> 
+            <span>Exit Navigation</span>
+          </button>
         )}
+
+        {/* Manual Control (Next) */}
+        <button 
+            style={styles.stepBtnSecondary} 
+            onClick={handleNextStep}
+            aria-label="Next Step"
+        >
+             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
       </div>
     </div>
   );
