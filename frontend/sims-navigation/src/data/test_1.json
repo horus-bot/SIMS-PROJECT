@@ -249,19 +249,52 @@
     { "from": "node_019", "to": "node_017" },
     { "from": "node_017", "to": "node_019" }
   ],
-  "destination":{
-    "BW204": "node_001",
-    "B wing Staff room": "node_004",
-    "BW206": "node_005",
-    "BW207": "node_006",
-    "BW208": "node_007",
-    "HOD ETECH": "node_019",
-    "BWING STAFF ROOM": "node_009",
-    "ECE STAFF ROOM": "node_034",
-    "ELECTRONIC AND CIRCUIT LAB": "node_038",
-    "NS LAB": "node_078",
-    "CDC LAB": "node_070"
+ "destination": {
+  "BW204": {
+    "node": "node_001",
+    "pic": "B204.jpeg"
+  },
+  "B wing Staff room": {
+    "node": "node_004",
+    "pic": "EtechStaff.jpeg"
+  },
+  "BW206": {
+    "node": "node_005",
+    "pic": "B206.jpeg"
+  },
+  "BW207": {
+    "node": "node_006",
+    "pic": "B207.jpeg"
+  },
+  "BW208": {
+    "node": "node_007",
+    "pic": "B208.jpeg"
+  },
+  "HOD ETECH": {
+    "node": "node_019",
+    "pic": "EtechHod.jpeg"
+  },
+  "BWING STAFF ROOM": {
+    "node": "node_009",
+    "pic": "EtechStaff2.jpeg"
+  },
+  "ECE STAFF ROOM": {
+    "node": "node_034",
+    "pic": "ece_staff.jpeg"
+  },
+  "ELECTRONIC AND CIRCUIT LAB": {
+    "node": "node_038",
+    "pic": "ec_lab.jpeg"
+  },
+  "NS LAB": {
+    "node": "node_078",
+    "pic": "nsLab.jpeg"
+  },
+  "CDC LAB": {
+    "node": "node_070",
+    "pic": "cdc_lab.jpeg"
   }
+}
 }
 
 

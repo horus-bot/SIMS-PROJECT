@@ -13,6 +13,21 @@ import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/usePDR";
 import { applyCRFConstraints } from "../utils/mapMatching";
 
+// Define types for the JSON data
+interface DestinationData {
+  node: string;
+  pic: string;
+}
+
+interface TestData {
+  nodes: Record<string, { x: number; y: number; type: string }>;
+  destination: Record<string, DestinationData>;
+  // Add other properties if needed
+}
+
+// Cast the imported JSON with proper typing
+const typedTestData = testData as TestData;
+
 const MAP_W = 4101;
 const MAP_H = 3025;
 
@@ -392,31 +407,7 @@ const styles: Record<string, CSSProperties> = {
 
 type NodeType = { x: number; y: number; type: string };
 
-// Function to compute distance from point to polyline
-/*
-const distanceToPolyline = (px: number, py: number, points: {x: number, y: number}[]) => {
-  let minDist = Infinity;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const dist = distanceToLineSegment(px, py, p1.x, p1.y, p2.x, p2.y);
-    if (dist < minDist) minDist = dist;
-  }
-  return minDist;
-};
 
-const distanceToLineSegment = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const l2 = dx * dx + dy * dy;
-  if (l2 === 0) return Math.hypot(px - x1, py - y1);
-  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
-  t = Math.max(0, Math.min(1, t));
-  const projX = x1 + t * dx;
-  const projY = y1 + t * dy;
-  return Math.hypot(px - projX, py - projY);
-};
-*/
 
 // Hover Button Helper
 const ControlButton = ({ label, children, onClick, style }: { label: string, children: React.ReactNode, onClick: () => void, style?: React.CSSProperties }) => {
@@ -457,19 +448,22 @@ const MapView = () => {
   const rawOrigin = searchParams.get("origin");
   const rawDest = searchParams.get("dest");
 
-  const destinations = testData.destination as Record<string, string>;
+  const destinations = useMemo(() => 
+    Object.fromEntries(Object.entries(typedTestData.destination).map(([key, val]) => [key, val.node])) as Record<string, string>,
+    []
+  );
   const originId = destinations[rawOrigin || ""] || rawOrigin;
   const destId = destinations[rawDest || ""] || rawDest;
 
-  const nodeMap = useMemo(() => testData.nodes as Record<string, NodeType>, []);
+  const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, []);
 
   // Destination Markers
   const destinationMarkers = useMemo(() => {
     return Object.entries(destinations).map(([name, id]) => {
       const node = nodeMap[id];
       if (!node) return null;
-      return { name, x: node.x, y: node.y, id };
-    }).filter((item): item is {name: string, x: number, y: number, id: string} => item !== null);
+      return { name, x: node.x, y: node.y, id, pic: typedTestData.destination[name]?.pic };
+    }).filter((item): item is {name: string, x: number, y: number, id: string, pic: string} => item !== null);
   }, [destinations, nodeMap]);
 
   // Starting Coordinates
@@ -504,6 +498,9 @@ const MapView = () => {
   const [showTurnPopup, setShowTurnPopup] = useState(false);
   const [pendingTurnNode, setPendingTurnNode] = useState<{id: string, x: number, y: number} | null>(null);
   const checkedTurns = useRef<Set<string>>(new Set());
+
+  // Destination Image Modal
+  const [selectedDestination, setSelectedDestination] = useState<{name: string, pic: string} | null>(null);
 
   const turnNodes = useMemo(() => {
     const turns: string[] = [];
@@ -947,7 +944,9 @@ const MapView = () => {
                     const isNear = dist < 250; 
                     
                     return (
-                        <div key={dest.name} style={{
+                        <div key={dest.name} 
+                             onClick={() => dest.pic && setSelectedDestination({name: dest.name, pic: dest.pic})}
+                             style={{
                             position: "absolute",
                             left: dest.x,
                             top: dest.y,
@@ -960,7 +959,8 @@ const MapView = () => {
                             boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
                             fontSize: isNear ? "14px" : "12px",
                             fontWeight: 700,
-                            pointerEvents: "none",
+                            pointerEvents: "auto",
+                            cursor: dest.pic ? "pointer" : "default",
                             zIndex: isNear ? 45 : 40,
                             whiteSpace: "nowrap",
                             transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -1073,6 +1073,62 @@ const MapView = () => {
             </ControlButton>
           </div>
         </div>
+
+        {/* Destination Image Modal */}
+        {selectedDestination && (
+          <div 
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+            onClick={() => setSelectedDestination(null)}
+          >
+            <div 
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "12px",
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                position: "relative",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setSelectedDestination(null)}
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  right: "10px",
+                  background: "none",
+                  border: "none",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+              <h3 style={{ marginTop: 0, marginBottom: "10px" }}>{selectedDestination.name}</h3>
+              <img 
+                src={`/${selectedDestination.pic}`} 
+                alt={selectedDestination.name} 
+                style={{ 
+                  maxWidth: "100%", 
+                  maxHeight: "70vh", 
+                  borderRadius: "8px" 
+                }} 
+              />
+            </div>
+          </div>
+        )}
 
         {showTurnPopup && isPaused && (
             <div style={styles.popupOverlay}>
