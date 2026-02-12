@@ -7,7 +7,7 @@ type Room = {
   name: string;
 };
 
-const APP_BASE_URL = import.meta.env.VITE_APP_BASE_URL;
+const APP_BASE_URL = import.meta.env.VITE_QR_BASE_URL;
 
 const QRGenerator = () => {
   const [origin, setOrigin] = useState<string>("");
