@@ -58,7 +58,7 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
     }}>
       {/* 1. Base Map Image */}
       <img
-        src="/2nd_Floor.svg"
+        src="/2nd_FloorSwathiEdition.svg"
         alt="Indoor Map"
         width={4101}
         height={3025}
