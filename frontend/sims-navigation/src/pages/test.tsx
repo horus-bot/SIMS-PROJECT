@@ -1,100 +1,316 @@
-import React, { useState } from 'react';
-import data from '../data/test_1.json';
+import React, { useState, useRef } from 'react';
+import initialData from '../data/graphData4th.json';
+
+type NodeType = 'path' | 'destination';
+
+interface Node {
+  x: number;
+  y: number;
+  type: NodeType;
+}
+
+interface Edge {
+  from: string;
+  to: string;
+}
+
+interface Destination {
+  node: string;
+  pic: string;
+}
+
+interface MapData {
+  nodes: Record<string, Node>;
+  edges: Edge[];
+  destinations: Record<string, Destination>;
+}
 
 const Test: React.FC = () => {
-  const [selectedNode, setSelectedNode] = useState<string>('');
-  const [showRoutes, setShowRoutes] = useState<boolean>(false);
-  const [showAllNodes, setShowAllNodes] = useState<boolean>(false);
+  const [mapData, setMapData] = useState<MapData>(() => {
+    const raw = initialData as any;
+    // Normalize destinations: if it's an array, convert to object
+    const destinations: Record<string, Destination> =
+      Array.isArray(raw.destinations) ? {} : (raw.destinations || {});
+    return { nodes: raw.nodes, edges: raw.edges, destinations };
+  });
+  const [mode, setMode] = useState<'view' | 'add_path' | 'add_destination' | 'add_edge' | 'delete'>('view');
+  const [selectedNodeForEdge, setSelectedNodeForEdge] = useState<string | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  const handleNodeSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedNode(event.target.value);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Generate next node ID (always node_XXX for both types)
+  const generateNodeId = () => {
+    let maxNum = 0;
+    Object.keys(mapData.nodes).forEach(id => {
+      const match = id.match(/^node_(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return 'node_' + String(maxNum + 1).padStart(3, '0');
   };
 
-  const handleShowRoutes = () => {
-    setShowRoutes(!showRoutes);
+  // Find destination name for a given node id
+  const getDestinationName = (nodeId: string): string | null => {
+    for (const [name, dest] of Object.entries(mapData.destinations)) {
+      if (dest.node === nodeId) return name;
+    }
+    return null;
   };
 
-  const handleShowAllNodes = () => {
-    setShowAllNodes(!showAllNodes);
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (mode !== 'add_path' && mode !== 'add_destination') return;
+    if (!svgRef.current) return;
+
+    const point = svgRef.current.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const svgCTM = svgRef.current.getScreenCTM();
+    if (!svgCTM) return;
+    const svgP = point.matrixTransform(svgCTM.inverse());
+
+    const newId = generateNodeId();
+    const x = Number(svgP.x.toFixed(1));
+    const y = Number(svgP.y.toFixed(1));
+
+    if (mode === 'add_path') {
+      setMapData(prev => ({
+        ...prev,
+        nodes: {
+          ...prev.nodes,
+          [newId]: { x, y, type: 'path' }
+        }
+      }));
+    } else {
+      // Destination — prompt for name
+      const name = window.prompt('Enter destination name (e.g. "BW204"):');
+      if (!name || name.trim() === '') return; // cancelled
+      const pic = window.prompt('Enter pic filename (leave empty if none):', '') || '';
+      setMapData(prev => ({
+        ...prev,
+        nodes: {
+          ...prev.nodes,
+          [newId]: { x, y, type: 'destination' }
+        },
+        destinations: {
+          ...prev.destinations,
+          [name.trim()]: { node: newId, pic: pic.trim() }
+        }
+      }));
+    }
   };
 
-  const handleNodeClick = (nodeId: string) => {
-    setSelectedNode(nodeId);
+  const handleNodeClick = (e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    if (mode === 'add_edge') {
+      if (!selectedNodeForEdge) {
+        setSelectedNodeForEdge(nodeId);
+      } else {
+        if (selectedNodeForEdge !== nodeId) {
+          const edgeExists = mapData.edges.some(
+            edge =>
+              (edge.from === selectedNodeForEdge && edge.to === nodeId) ||
+              (edge.from === nodeId && edge.to === selectedNodeForEdge)
+          );
+          if (!edgeExists) {
+            setMapData(prev => ({
+              ...prev,
+              edges: [...prev.edges, { from: selectedNodeForEdge, to: nodeId }]
+            }));
+          }
+        }
+        setSelectedNodeForEdge(null);
+      }
+    } else if (mode === 'delete') {
+      setMapData(prev => {
+        const newNodes = { ...prev.nodes };
+        delete newNodes[nodeId];
+        // Also remove from destinations if present
+        const newDest = { ...prev.destinations };
+        for (const [name, dest] of Object.entries(newDest)) {
+          if (dest.node === nodeId) delete newDest[name];
+        }
+        return {
+          ...prev,
+          nodes: newNodes,
+          edges: prev.edges.filter(edge => edge.from !== nodeId && edge.to !== nodeId),
+          destinations: newDest
+        };
+      });
+    }
   };
+
+  const handleEdgeClick = (e: React.MouseEvent, edgeIndex: number) => {
+    e.stopPropagation();
+    if (mode === 'delete') {
+      setMapData(prev => ({
+        ...prev,
+        edges: prev.edges.filter((_, i) => i !== edgeIndex)
+      }));
+    }
+  };
+
+  const downloadJson = () => {
+    const dataStr = JSON.stringify(mapData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'graphData4th.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const nodeCount = Object.keys(mapData.nodes).length;
+  const edgeCount = mapData.edges.length;
+  const destCount = Object.keys(mapData.destinations).length;
 
   return (
-    <div>
-      <h1>Test Page</h1>
-      <div>
-        <label htmlFor="nodeSelect">Select Node: </label>
-        <select id="nodeSelect" value={selectedNode} onChange={handleNodeSelect}>
-          <option value="">-- Select a node --</option>
-          {Object.keys(data.nodes).map(nodeId => (
-            <option key={nodeId} value={nodeId}>{nodeId}</option>
-          ))}
-        </select>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '16px', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <h2 style={{ margin: 0 }}>Map Playground — 4th Floor</h2>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', fontSize: '13px', color: '#555' }}>
+          <span>Nodes: <b>{nodeCount}</b></span>
+          <span>Edges: <b>{edgeCount}</b></span>
+          <span>Destinations: <b>{destCount}</b></span>
+          <button
+            onClick={downloadJson}
+            style={{ backgroundColor: '#4CAF50', color: 'white', fontWeight: 'bold', padding: '8px 16px', cursor: 'pointer', border: 'none', borderRadius: '5px', fontSize: '13px' }}
+          >
+            Export JSON
+          </button>
+        </div>
       </div>
-      <button onClick={handleShowRoutes}>
-        {showRoutes ? 'Hide Routes' : 'Show Routes'}
-      </button>
-      <button onClick={handleShowAllNodes}>
-        {showAllNodes ? 'Hide All Nodes' : 'Show All Nodes'}
-      </button>
-      {selectedNode && <p>Selected Node: {selectedNode}</p>}
-      <div style={{ position: 'relative', width: '100%', maxWidth: '100vw', height: 'auto', overflow: 'auto' }}>
-        <img src="/test.svg" alt="map" style={{ width: '100%', height: 'auto', display: 'block' }} />
-        <svg
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 'auto' }}
-          viewBox="0 0 4101 3025"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {selectedNode && data.nodes[selectedNode as keyof typeof data.nodes] && (
-            <circle
-              cx={data.nodes[selectedNode as keyof typeof data.nodes].x}
-              cy={data.nodes[selectedNode as keyof typeof data.nodes].y}
-              r="10"
-              fill="red"
-              stroke="black"
-              strokeWidth="2"
-            />
-          )}
-          {showAllNodes &&
-            Object.entries(data.nodes).map(([nodeId, node]) => (
-              <circle
-                key={nodeId}
-                cx={node.x}
-                cy={node.y}
-                r="5"
-                fill="green"
-                stroke="black"
-                strokeWidth="1"
-                onClick={() => handleNodeClick(nodeId)}
-                style={{ cursor: 'pointer' }}
-              />
-            ))}
-          {showRoutes &&
-            data.edges.map((edge, index) => {
-              const fromNode = data.nodes[edge.from as keyof typeof data.nodes];
-              const toNode = data.nodes[edge.to as keyof typeof data.nodes];
-              if (fromNode && toNode) {
-                return (
-                  <line
-                    key={index}
-                    x1={fromNode.x}
-                    y1={fromNode.y}
-                    x2={toNode.x}
-                    y2={toNode.y}
-                    stroke="blue"
-                    strokeWidth="3"
-                  />
-                );
-              }
-              return null;
+
+      {/* Toolbar */}
+      <div style={{ marginBottom: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {([
+          { m: 'view' as const, label: 'View', color: '#333' },
+          { m: 'add_path' as const, label: 'Path Node', color: 'green' },
+          { m: 'add_destination' as const, label: 'Destination', color: 'purple' },
+          { m: 'add_edge' as const, label: 'Connect', color: '#1a73e8' },
+          { m: 'delete' as const, label: 'Delete', color: 'red' },
+        ]).map(({ m, label, color }) => (
+          <button
+            key={m}
+            onClick={() => { setMode(m); setSelectedNodeForEdge(null); }}
+            style={{
+              padding: '6px 14px',
+              fontSize: '13px',
+              fontWeight: mode === m ? 700 : 400,
+              color: mode === m ? 'white' : color,
+              backgroundColor: mode === m ? color : 'white',
+              border: `2px solid ${color}`,
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Status bar */}
+      <div style={{ marginBottom: '6px', height: '22px', fontSize: '13px', color: '#666' }}>
+        {mode === 'view' && (hoveredNode
+          ? (() => {
+              const n = mapData.nodes[hoveredNode];
+              const destName = n?.type === 'destination' ? getDestinationName(hoveredNode) : null;
+              return `${hoveredNode} (${n?.type})${destName ? ' — "' + destName + '"' : ''} @ (${n?.x}, ${n?.y})`;
+            })()
+          : 'Hover over nodes to inspect.')}
+        {mode === 'add_path' && 'Click on map to place a Path node.'}
+        {mode === 'add_destination' && 'Click on map to place a Destination node (you will be prompted for a name).'}
+        {mode === 'add_edge' && (!selectedNodeForEdge
+          ? 'Click the first node.'
+          : 'Selected ' + selectedNodeForEdge + ' — now click the second node to connect.')}
+        {mode === 'delete' && 'Click a node or edge to remove it.'}
+      </div>
+
+      {/* Map */}
+      <div style={{ position: 'relative', width: '100%', flex: 1, overflow: 'auto', border: '1px solid #ccc', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+        <div style={{ position: 'relative', width: 'max-content', display: 'inline-block' }}>
+          <img
+            src="/SIMS4th.svg"
+            alt="Map"
+            style={{ display: 'block', maxWidth: 'none', width: '1285px', height: '731px' }}
+          />
+          <svg
+            ref={svgRef}
+            onClick={handleSvgClick}
+            style={{
+              position: 'absolute', top: 0, left: 0,
+              width: '1285px', height: '731px',
+              cursor: (mode === 'add_path' || mode === 'add_destination') ? 'crosshair' : 'default'
+            }}
+            viewBox="0 0 1285 731"
+          >
+            {/* Edges */}
+            {mapData.edges.map((edge, index) => {
+              const fromNode = mapData.nodes[edge.from];
+              const toNode = mapData.nodes[edge.to];
+              if (!fromNode || !toNode) return null;
+              return (
+                <line
+                  key={'e-' + edge.from + '-' + edge.to + '-' + index}
+                  x1={fromNode.x} y1={fromNode.y}
+                  x2={toNode.x} y2={toNode.y}
+                  stroke={mode === 'delete' ? 'rgba(220,50,50,0.6)' : 'rgba(60,120,255,0.5)'}
+                  strokeWidth={mode === 'delete' ? '6' : '1.5'}
+                  onClick={(e) => handleEdgeClick(e, index)}
+                  style={{ cursor: mode === 'delete' ? 'pointer' : 'default' }}
+                />
+              );
             })}
-        </svg>
+
+            {/* Nodes */}
+            {Object.entries(mapData.nodes).map(([nodeId, node]) => {
+              const isSelected = selectedNodeForEdge === nodeId;
+              const isDest = node.type === 'destination';
+              const destName = isDest ? getDestinationName(nodeId) : null;
+              const baseR = isDest ? 4 : 2.5;
+              const hoverR = isDest ? 7 : 5;
+              const isHovered = hoveredNode === nodeId;
+              return (
+                <g key={nodeId}>
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={isHovered ? hoverR : baseR}
+                    fill={isSelected ? 'orange' : isDest ? '#9c27b0' : '#4caf50'}
+                    stroke={isSelected ? '#333' : 'white'}
+                    strokeWidth="1"
+                    onClick={(e) => handleNodeClick(e, nodeId)}
+                    onMouseEnter={() => setHoveredNode(nodeId)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                    style={{ cursor: mode !== 'view' ? 'pointer' : 'default' }}
+                  />
+                  {isDest && destName && (
+                    <text
+                      x={node.x}
+                      y={node.y - (isHovered ? hoverR + 3 : baseR + 3)}
+                      textAnchor="middle"
+                      fontSize="6"
+                      fill="#9c27b0"
+                      fontWeight="bold"
+                      pointerEvents="none"
+                    >
+                      {destName}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
       </div>
     </div>
   );
-}
+};
 
 export default Test;
