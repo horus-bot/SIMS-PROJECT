@@ -1,0 +1,16 @@
+{
+    "nodes": {
+        "node_example": {
+            "x": 0.0,
+            "y": 0.0,
+            "type": "path"
+        }
+    },
+    "edges": [
+        {
+            "from": "node_example",
+            "to": "node_example_2"
+        }
+    ],
+    "destinations": {}
+}

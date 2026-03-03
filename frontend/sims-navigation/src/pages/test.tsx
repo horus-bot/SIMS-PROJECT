@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import initialData from '../data/graphData4th.json';
+import templateData from '../data/template.json';
 
 type NodeType = 'path' | 'destination';
 
@@ -38,6 +39,9 @@ const Test: React.FC = () => {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five'>('4th');
+  const lastSavedRef = useRef<string>('');
+  const [isDirty, setIsDirty] = useState(false);
 
   // Generate next node ID (always node_XXX for both types)
   const generateNodeId = () => {
@@ -158,12 +162,60 @@ const Test: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'graphData4th.json';
+    // choose a filename based on selected map
+    const filename = selectedMap === '4th' ? 'graphData4th.json' : selectedMap === 'first' ? 'graphData_first.json' : 'graphData_five.json';
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    // mark as saved
+    lastSavedRef.current = dataStr;
+    setIsDirty(false);
   };
+
+  const saveOnly = () => {
+    // same as download but keep filename
+    downloadJson();
+  };
+
+  // map definitions
+  const maps: Record<string, { label: string; svg: string; data: any }> = {
+    '4th': { label: '4th Floor', svg: '/SIMS4th.svg', data: initialData },
+    'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
+    'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData }
+  };
+
+  // update dirty flag when mapData changes
+  useEffect(() => {
+    const curr = JSON.stringify(mapData);
+    setIsDirty(curr !== lastSavedRef.current);
+  }, [mapData]);
+
+  // load map data when selectedMap changes
+  useEffect(() => {
+    const raw = maps[selectedMap].data as any;
+    const destinations: Record<string, Destination> = Array.isArray(raw.destinations) ? {} : (raw.destinations || {});
+    const nodes = raw.nodes || {};
+    const edges = raw.edges || [];
+    const newMap: MapData = { nodes, edges, destinations };
+    setMapData(newMap);
+    lastSavedRef.current = JSON.stringify(newMap);
+    setIsDirty(false);
+  }, [selectedMap]);
+
+  // warn on closing tab if there are unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   const nodeCount = Object.keys(mapData.nodes).length;
   const edgeCount = mapData.edges.length;
@@ -173,16 +225,45 @@ const Test: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '16px', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <h2 style={{ margin: 0 }}>Map Playground — 4th Floor</h2>
+        <h2 style={{ margin: 0 }}>Map Playground — {maps[selectedMap].label}</h2>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', fontSize: '13px', color: '#555' }}>
           <span>Nodes: <b>{nodeCount}</b></span>
           <span>Edges: <b>{edgeCount}</b></span>
           <span>Destinations: <b>{destCount}</b></span>
-          <button
-            onClick={downloadJson}
-            style={{ backgroundColor: '#4CAF50', color: 'white', fontWeight: 'bold', padding: '8px 16px', cursor: 'pointer', border: 'none', borderRadius: '5px', fontSize: '13px' }}
+          <select
+            value={selectedMap}
+            onChange={(e) => {
+              const next = e.target.value as '4th' | 'first' | 'five';
+              if (isDirty) {
+                const ok = window.confirm('You have unsaved changes. OK = export/save before switching, Cancel = abort switch.');
+                if (!ok) return;
+                downloadJson();
+              }
+              setSelectedMap(next);
+            }}
+            style={{ padding: '6px', borderRadius: '4px' }}
           >
-            Export JSON
+            <option value="4th">4th Floor</option>
+            <option value="first">First OG</option>
+            <option value="five">Fifth OG</option>
+          </select>
+
+          <button
+            onClick={saveOnly}
+            style={{ backgroundColor: '#1976d2', color: 'white', fontWeight: 'bold', padding: '8px 12px', cursor: 'pointer', border: 'none', borderRadius: '5px', fontSize: '13px' }}
+          >
+            Save / Export
+          </button>
+          <button
+            onClick={() => {
+              const dataStr = JSON.stringify(mapData, null, 2);
+              lastSavedRef.current = dataStr;
+              setIsDirty(false);
+              alert('Marked as saved (no export).');
+            }}
+            style={{ backgroundColor: '#4CAF50', color: 'white', fontWeight: 'bold', padding: '8px 12px', cursor: 'pointer', border: 'none', borderRadius: '5px', fontSize: '13px' }}
+          >
+            Mark Saved
           </button>
         </div>
       </div>
