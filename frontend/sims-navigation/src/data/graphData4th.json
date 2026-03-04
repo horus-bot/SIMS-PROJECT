@@ -1,4 +1,9 @@
-{
+{ "meta": {
+    "building": "SIMS",
+    "floor": "4",
+    "floorName": "Fourth Floor",
+    "svg": "/SIMS_MAP_.svg"
+  },
   "nodes": {
     "node_001": {
       "x": 89.5,
@@ -2184,6 +2189,476 @@
       "x": 729.5,
       "y": 680.5,
       "type": "path"
+    },
+    "node_438": {
+      "x": 50.3,
+      "y": 663,
+      "type": "destination"
+    },
+    "node_439": {
+      "x": 36.3,
+      "y": 607,
+      "type": "destination"
+    },
+    "node_440": {
+      "x": 34.3,
+      "y": 561,
+      "type": "destination"
+    },
+    "node_441": {
+      "x": 30.3,
+      "y": 522,
+      "type": "destination"
+    },
+    "node_442": {
+      "x": 31.3,
+      "y": 473,
+      "type": "destination"
+    },
+    "node_443": {
+      "x": 37.3,
+      "y": 435,
+      "type": "destination"
+    },
+    "node_444": {
+      "x": 35.3,
+      "y": 387,
+      "type": "destination"
+    },
+    "node_445": {
+      "x": 37.3,
+      "y": 341,
+      "type": "destination"
+    },
+    "node_446": {
+      "x": 34.3,
+      "y": 295,
+      "type": "destination"
+    },
+    "node_447": {
+      "x": 35.3,
+      "y": 249,
+      "type": "destination"
+    },
+    "node_448": {
+      "x": 33.3,
+      "y": 206,
+      "type": "destination"
+    },
+    "node_449": {
+      "x": 32.3,
+      "y": 168,
+      "type": "destination"
+    },
+    "node_450": {
+      "x": 32.3,
+      "y": 122,
+      "type": "destination"
+    },
+    "node_451": {
+      "x": 53.3,
+      "y": 68,
+      "type": "destination"
+    },
+    "node_452": {
+      "x": 113.3,
+      "y": 67,
+      "type": "destination"
+    },
+    "node_453": {
+      "x": 157.3,
+      "y": 66,
+      "type": "destination"
+    },
+    "node_454": {
+      "x": 197.3,
+      "y": 69,
+      "type": "destination"
+    },
+    "node_455": {
+      "x": 239.3,
+      "y": 67,
+      "type": "destination"
+    },
+    "node_456": {
+      "x": 284.3,
+      "y": 69,
+      "type": "destination"
+    },
+    "node_457": {
+      "x": 336.3,
+      "y": 67,
+      "type": "destination"
+    },
+    "node_458": {
+      "x": 383.3,
+      "y": 68,
+      "type": "destination"
+    },
+    "node_459": {
+      "x": 427.3,
+      "y": 68,
+      "type": "destination"
+    },
+    "node_460": {
+      "x": 474.3,
+      "y": 69,
+      "type": "destination"
+    },
+    "node_461": {
+      "x": 519.3,
+      "y": 71,
+      "type": "destination"
+    },
+    "node_462": {
+      "x": 573.3,
+      "y": 73,
+      "type": "destination"
+    },
+    "node_463": {
+      "x": 615.3,
+      "y": 69,
+      "type": "destination"
+    },
+    "node_464": {
+      "x": 656.3,
+      "y": 71,
+      "type": "destination"
+    },
+    "node_465": {
+      "x": 697.3,
+      "y": 68,
+      "type": "destination"
+    },
+    "node_466": {
+      "x": 751.3,
+      "y": 69,
+      "type": "destination"
+    },
+    "node_467": {
+      "x": 772.3,
+      "y": 119,
+      "type": "destination"
+    },
+    "node_468": {
+      "x": 771.3,
+      "y": 166.7,
+      "type": "destination"
+    },
+    "node_469": {
+      "x": 771.3,
+      "y": 211.3,
+      "type": "destination"
+    },
+    "node_470": {
+      "x": 768.3,
+      "y": 256,
+      "type": "destination"
+    },
+    "node_471": {
+      "x": 771.3,
+      "y": 299.3,
+      "type": "destination"
+    },
+    "node_472": {
+      "x": 769.3,
+      "y": 340,
+      "type": "destination"
+    },
+    "node_473": {
+      "x": 769.3,
+      "y": 389,
+      "type": "destination"
+    },
+    "node_474": {
+      "x": 770.3,
+      "y": 435,
+      "type": "destination"
+    },
+    "node_475": {
+      "x": 770.3,
+      "y": 478,
+      "type": "destination"
+    },
+    "node_476": {
+      "x": 770.3,
+      "y": 519,
+      "type": "destination"
+    },
+    "node_477": {
+      "x": 768.3,
+      "y": 564,
+      "type": "destination"
+    },
+    "node_478": {
+      "x": 767.3,
+      "y": 610,
+      "type": "destination"
+    },
+    "node_479": {
+      "x": 756.3,
+      "y": 663,
+      "type": "destination"
+    },
+    "node_480": {
+      "x": 699.3,
+      "y": 666,
+      "type": "destination"
+    },
+    "node_481": {
+      "x": 660.3,
+      "y": 668,
+      "type": "destination"
+    },
+    "node_482": {
+      "x": 618.3,
+      "y": 666,
+      "type": "destination"
+    },
+    "node_483": {
+      "x": 578.3,
+      "y": 664,
+      "type": "destination"
+    },
+    "node_484": {
+      "x": 544.3,
+      "y": 648,
+      "type": "destination"
+    },
+    "node_485": {
+      "x": 518.3,
+      "y": 643,
+      "type": "destination"
+    },
+    "node_486": {
+      "x": 479.3,
+      "y": 663,
+      "type": "destination"
+    },
+    "node_487": {
+      "x": 420.3,
+      "y": 662,
+      "type": "destination"
+    },
+    "node_488": {
+      "x": 361.3,
+      "y": 664,
+      "type": "destination"
+    },
+    "node_489": {
+      "x": 311.3,
+      "y": 678,
+      "type": "destination"
+    },
+    "node_490": {
+      "x": 300.3,
+      "y": 641,
+      "type": "destination"
+    },
+    "node_491": {
+      "x": 254.3,
+      "y": 663,
+      "type": "destination"
+    },
+    "node_492": {
+      "x": 215.3,
+      "y": 661,
+      "type": "destination"
+    },
+    "node_493": {
+      "x": 167.3,
+      "y": 664,
+      "type": "destination"
+    },
+    "node_494": {
+      "x": 125.3,
+      "y": 663,
+      "type": "destination"
+    },
+    "node_495": {
+      "x": 176.3,
+      "y": 168.7,
+      "type": "destination"
+    },
+    "node_496": {
+      "x": 248.3,
+      "y": 167.7,
+      "type": "destination"
+    },
+    "node_497": {
+      "x": 315.3,
+      "y": 165.3,
+      "type": "destination"
+    },
+    "node_498": {
+      "x": 485.3,
+      "y": 166,
+      "type": "destination"
+    },
+    "node_499": {
+      "x": 561.3,
+      "y": 166,
+      "type": "destination"
+    },
+    "node_500": {
+      "x": 630.3,
+      "y": 165,
+      "type": "destination"
+    },
+    "node_501": {
+      "x": 122.3,
+      "y": 207.3,
+      "type": "destination"
+    },
+    "node_502": {
+      "x": 179.3,
+      "y": 218.3,
+      "type": "destination"
+    },
+    "node_503": {
+      "x": 246.3,
+      "y": 222.3,
+      "type": "destination"
+    },
+    "node_504": {
+      "x": 559.3,
+      "y": 219.3,
+      "type": "destination"
+    },
+    "node_505": {
+      "x": 631.3,
+      "y": 222.3,
+      "type": "destination"
+    },
+    "node_506": {
+      "x": 558.3,
+      "y": 291,
+      "type": "destination"
+    },
+    "node_507": {
+      "x": 624.3,
+      "y": 293,
+      "type": "destination"
+    },
+    "node_508": {
+      "x": 682.3,
+      "y": 293,
+      "type": "destination"
+    },
+    "node_509": {
+      "x": 684.3,
+      "y": 343,
+      "type": "destination"
+    },
+    "node_510": {
+      "x": 653.3,
+      "y": 341,
+      "type": "destination"
+    },
+    "node_511": {
+      "x": 622.3,
+      "y": 341,
+      "type": "destination"
+    },
+    "node_512": {
+      "x": 614.3,
+      "y": 466,
+      "type": "destination"
+    },
+    "node_513": {
+      "x": 179.3,
+      "y": 563,
+      "type": "destination"
+    },
+    "node_514": {
+      "x": 246.3,
+      "y": 561,
+      "type": "destination"
+    },
+    "node_515": {
+      "x": 318.3,
+      "y": 563,
+      "type": "destination"
+    },
+    "node_516": {
+      "x": 490.3,
+      "y": 566,
+      "type": "destination"
+    },
+    "node_517": {
+      "x": 562.3,
+      "y": 565,
+      "type": "destination"
+    },
+    "node_518": {
+      "x": 631.3,
+      "y": 566,
+      "type": "destination"
+    },
+    "node_519": {
+      "x": 124.3,
+      "y": 426,
+      "type": "destination"
+    },
+    "node_520": {
+      "x": 191.3,
+      "y": 437,
+      "type": "destination"
+    },
+    "node_521": {
+      "x": 192.3,
+      "y": 499,
+      "type": "destination"
+    },
+    "node_522": {
+      "x": 265.3,
+      "y": 441,
+      "type": "destination"
+    },
+    "node_523": {
+      "x": 271.3,
+      "y": 503,
+      "type": "destination"
+    },
+    "node_524": {
+      "x": 229.3,
+      "y": 401.3,
+      "type": "path"
+    },
+    "node_525": {
+      "x": 228.3,
+      "y": 411.3,
+      "type": "path"
+    },
+    "node_526": {
+      "x": 227.3,
+      "y": 425.3,
+      "type": "path"
+    },
+    "node_527": {
+      "x": 226.3,
+      "y": 440.3,
+      "type": "path"
+    },
+    "node_528": {
+      "x": 225.3,
+      "y": 457.7,
+      "type": "path"
+    },
+    "node_529": {
+      "x": 225.3,
+      "y": 476.7,
+      "type": "path"
+    },
+    "node_530": {
+      "x": 227.3,
+      "y": 493.7,
+      "type": "path"
+    },
+    "node_531": {
+      "x": 224.3,
+      "y": 507.7,
+      "type": "path"
     }
   },
   "edges": [
@@ -3734,7 +4209,836 @@
     {
       "from": "node_304",
       "to": "node_305"
+    },
+    {
+      "from": "node_453",
+      "to": "node_243"
+    },
+    {
+      "from": "node_454",
+      "to": "node_245"
+    },
+    {
+      "from": "node_455",
+      "to": "node_252"
+    },
+    {
+      "from": "node_251",
+      "to": "node_252"
+    },
+    {
+      "from": "node_456",
+      "to": "node_254"
+    },
+    {
+      "from": "node_457",
+      "to": "node_260"
+    },
+    {
+      "from": "node_458",
+      "to": "node_270"
+    },
+    {
+      "from": "node_459",
+      "to": "node_269"
+    },
+    {
+      "from": "node_460",
+      "to": "node_278"
+    },
+    {
+      "from": "node_461",
+      "to": "node_285"
+    },
+    {
+      "from": "node_462",
+      "to": "node_287"
+    },
+    {
+      "from": "node_463",
+      "to": "node_294"
+    },
+    {
+      "from": "node_464",
+      "to": "node_296"
+    },
+    {
+      "from": "node_465",
+      "to": "node_303"
+    },
+    {
+      "from": "node_466",
+      "to": "node_304"
+    },
+    {
+      "from": "node_377",
+      "to": "node_467"
+    },
+    {
+      "from": "node_378",
+      "to": "node_468"
+    },
+    {
+      "from": "node_383",
+      "to": "node_469"
+    },
+    {
+      "from": "node_392",
+      "to": "node_470"
+    },
+    {
+      "from": "node_395",
+      "to": "node_471"
+    },
+    {
+      "from": "node_398",
+      "to": "node_472"
+    },
+    {
+      "from": "node_116",
+      "to": "node_117"
+    },
+    {
+      "from": "node_117",
+      "to": "node_390"
+    },
+    {
+      "from": "node_117",
+      "to": "node_391"
+    },
+    {
+      "from": "node_115",
+      "to": "node_508"
+    },
+    {
+      "from": "node_507",
+      "to": "node_107"
+    },
+    {
+      "from": "node_100",
+      "to": "node_506"
+    },
+    {
+      "from": "node_099",
+      "to": "node_504"
+    },
+    {
+      "from": "node_106",
+      "to": "node_505"
+    },
+    {
+      "from": "node_061",
+      "to": "node_512"
+    },
+    {
+      "from": "node_411",
+      "to": "node_474"
+    },
+    {
+      "from": "node_413",
+      "to": "node_475"
+    },
+    {
+      "from": "node_476",
+      "to": "node_421"
+    },
+    {
+      "from": "node_426",
+      "to": "node_477"
+    },
+    {
+      "from": "node_428",
+      "to": "node_478"
+    },
+    {
+      "from": "node_431",
+      "to": "node_479"
+    },
+    {
+      "from": "node_374",
+      "to": "node_480"
+    },
+    {
+      "from": "node_429",
+      "to": "node_375"
+    },
+    {
+      "from": "node_518",
+      "to": "node_366"
+    },
+    {
+      "from": "node_365",
+      "to": "node_482"
+    },
+    {
+      "from": "node_367",
+      "to": "node_481"
+    },
+    {
+      "from": "node_361",
+      "to": "node_483"
+    },
+    {
+      "from": "node_356",
+      "to": "node_484"
+    },
+    {
+      "from": "node_352",
+      "to": "node_485"
+    },
+    {
+      "from": "node_351",
+      "to": "node_486"
+    },
+    {
+      "from": "node_345",
+      "to": "node_487"
+    },
+    {
+      "from": "node_516",
+      "to": "node_350"
+    },
+    {
+      "from": "node_333",
+      "to": "node_488"
+    },
+    {
+      "from": "node_332",
+      "to": "node_489"
+    },
+    {
+      "from": "node_490",
+      "to": "node_489"
+    },
+    {
+      "from": "node_515",
+      "to": "node_330"
+    },
+    {
+      "from": "node_326",
+      "to": "node_491"
+    },
+    {
+      "from": "node_514",
+      "to": "node_324"
+    },
+    {
+      "from": "node_324",
+      "to": "node_323"
+    },
+    {
+      "from": "node_317",
+      "to": "node_492"
+    },
+    {
+      "from": "node_513",
+      "to": "node_316"
+    },
+    {
+      "from": "node_317",
+      "to": "node_493"
+    },
+    {
+      "from": "node_494",
+      "to": "node_308"
+    },
+    {
+      "from": "node_307",
+      "to": "node_438"
+    },
+    {
+      "from": "node_002",
+      "to": "node_439"
+    },
+    {
+      "from": "node_440",
+      "to": "node_004"
+    },
+    {
+      "from": "node_003",
+      "to": "node_004"
+    },
+    {
+      "from": "node_005",
+      "to": "node_004"
+    },
+    {
+      "from": "node_441",
+      "to": "node_012"
+    },
+    {
+      "from": "node_442",
+      "to": "node_017"
+    },
+    {
+      "from": "node_443",
+      "to": "node_019"
+    },
+    {
+      "from": "node_444",
+      "to": "node_023"
+    },
+    {
+      "from": "node_030",
+      "to": "node_519"
+    },
+    {
+      "from": "node_445",
+      "to": "node_211"
+    },
+    {
+      "from": "node_446",
+      "to": "node_216"
+    },
+    {
+      "from": "node_218",
+      "to": "node_447"
+    },
+    {
+      "from": "node_448",
+      "to": "node_226"
+    },
+    {
+      "from": "node_449",
+      "to": "node_231"
+    },
+    {
+      "from": "node_450",
+      "to": "node_232"
+    },
+    {
+      "from": "node_451",
+      "to": "node_235"
+    },
+    {
+      "from": "node_452",
+      "to": "node_236"
+    },
+    {
+      "from": "node_244",
+      "to": "node_495"
+    },
+    {
+      "from": "node_252",
+      "to": "node_496"
+    },
+    {
+      "from": "node_258",
+      "to": "node_497"
+    },
+    {
+      "from": "node_502",
+      "to": "node_080"
+    },
+    {
+      "from": "node_503",
+      "to": "node_089"
+    },
+    {
+      "from": "node_528",
+      "to": "node_520"
+    },
+    {
+      "from": "node_528",
+      "to": "node_522"
+    },
+    {
+      "from": "node_523",
+      "to": "node_530"
+    },
+    {
+      "from": "node_530",
+      "to": "node_521"
+    },
+    {
+      "from": "node_041",
+      "to": "node_524"
+    },
+    {
+      "from": "node_524",
+      "to": "node_525"
+    },
+    {
+      "from": "node_525",
+      "to": "node_526"
+    },
+    {
+      "from": "node_526",
+      "to": "node_527"
+    },
+    {
+      "from": "node_527",
+      "to": "node_528"
+    },
+    {
+      "from": "node_528",
+      "to": "node_529"
+    },
+    {
+      "from": "node_529",
+      "to": "node_530"
+    },
+    {
+      "from": "node_530",
+      "to": "node_531"
+    },
+    {
+      "from": "node_121",
+      "to": "node_134"
+    },
+    {
+      "from": "node_134",
+      "to": "node_135"
+    },
+    {
+      "from": "node_135",
+      "to": "node_136"
+    },
+    {
+      "from": "node_136",
+      "to": "node_137"
+    },
+    {
+      "from": "node_137",
+      "to": "node_182"
+    },
+    {
+      "from": "node_154",
+      "to": "node_155"
+    },
+    {
+      "from": "node_155",
+      "to": "node_156"
+    },
+    {
+      "from": "node_156",
+      "to": "node_157"
+    },
+    {
+      "from": "node_157",
+      "to": "node_158"
+    },
+    {
+      "from": "node_158",
+      "to": "node_159"
+    },
+    {
+      "from": "node_159",
+      "to": "node_160"
+    },
+    {
+      "from": "node_159",
+      "to": "node_140"
+    },
+    {
+      "from": "node_140",
+      "to": "node_184"
+    },
+    {
+      "from": "node_184",
+      "to": "node_201"
+    },
+    {
+      "from": "node_153",
+      "to": "node_154"
+    },
+    {
+      "from": "node_152",
+      "to": "node_153"
+    },
+    {
+      "from": "node_151",
+      "to": "node_152"
+    },
+    {
+      "from": "node_143",
+      "to": "node_144"
+    },
+    {
+      "from": "node_144",
+      "to": "node_145"
+    },
+    {
+      "from": "node_145",
+      "to": "node_146"
+    },
+    {
+      "from": "node_146",
+      "to": "node_147"
+    },
+    {
+      "from": "node_147",
+      "to": "node_148"
+    },
+    {
+      "from": "node_148",
+      "to": "node_149"
+    },
+    {
+      "from": "node_149",
+      "to": "node_150"
+    },
+    {
+      "from": "node_150",
+      "to": "node_151"
+    },
+    {
+      "from": "node_143",
+      "to": "node_095"
+    },
+    {
+      "from": "node_143",
+      "to": "node_142"
+    },
+    {
+      "from": "node_142",
+      "to": "node_163"
+    },
+    {
+      "from": "node_163",
+      "to": "node_164"
+    },
+    {
+      "from": "node_163",
+      "to": "node_141"
+    },
+    {
+      "from": "node_141",
+      "to": "node_142"
+    },
+    {
+      "from": "node_141",
+      "to": "node_181"
     }
   ],
-  "destinations": {}
+  "destinations": {
+    "4101": {
+      "node": "node_444",
+      "pic": ""
+    },
+    "4102": {
+      "node": "node_442",
+      "pic": ""
+    },
+    "4104": {
+      "node": "node_441",
+      "pic": ""
+    },
+    "4105": {
+      "node": "node_440",
+      "pic": ""
+    },
+    "4106": {
+      "node": "node_439",
+      "pic": ""
+    },
+    "4107": {
+      "node": "node_438",
+      "pic": ""
+    },
+    "4108": {
+      "node": "node_494",
+      "pic": ""
+    },
+    "4109": {
+      "node": "node_493",
+      "pic": ""
+    },
+    "4110": {
+      "node": "node_492",
+      "pic": ""
+    },
+    "4111": {
+      "node": "node_491",
+      "pic": ""
+    },
+    "4113": {
+      "node": "node_515",
+      "pic": ""
+    },
+    "4117": {
+      "node": "node_519",
+      "pic": ""
+    },
+    "4118": {
+      "node": "node_520",
+      "pic": ""
+    },
+    "4119": {
+      "node": "node_521",
+      "pic": ""
+    },
+    "4120": {
+      "node": "node_523",
+      "pic": ""
+    },
+    "4121": {
+      "node": "node_522",
+      "pic": ""
+    },
+    "4201": {
+      "node": "node_445",
+      "pic": ""
+    },
+    "4202": {
+      "node": "node_446",
+      "pic": ""
+    },
+    "4203": {
+      "node": "node_447",
+      "pic": ""
+    },
+    "4204": {
+      "node": "node_448",
+      "pic": ""
+    },
+    "4205": {
+      "node": "node_449",
+      "pic": ""
+    },
+    "4206": {
+      "node": "node_450",
+      "pic": ""
+    },
+    "4207": {
+      "node": "node_451",
+      "pic": ""
+    },
+    "4208": {
+      "node": "node_452",
+      "pic": ""
+    },
+    "4209": {
+      "node": "node_453",
+      "pic": ""
+    },
+    "4210": {
+      "node": "node_454",
+      "pic": ""
+    },
+    "4211": {
+      "node": "node_455",
+      "pic": ""
+    },
+    "4212": {
+      "node": "node_456",
+      "pic": ""
+    },
+    "4213": {
+      "node": "node_457",
+      "pic": ""
+    },
+    "4214": {
+      "node": "node_497",
+      "pic": ""
+    },
+    "4215": {
+      "node": "node_496",
+      "pic": ""
+    },
+    "4216": {
+      "node": "node_495",
+      "pic": ""
+    },
+    "4218": {
+      "node": "node_502",
+      "pic": ""
+    },
+    "4219": {
+      "node": "node_503",
+      "pic": ""
+    },
+    "4301": {
+      "node": "node_470",
+      "pic": ""
+    },
+    "4302": {
+      "node": "node_469",
+      "pic": ""
+    },
+    "4303": {
+      "node": "node_468",
+      "pic": ""
+    },
+    "4304": {
+      "node": "node_467",
+      "pic": ""
+    },
+    "4305": {
+      "node": "node_466",
+      "pic": ""
+    },
+    "4306": {
+      "node": "node_465",
+      "pic": ""
+    },
+    "4307": {
+      "node": "node_464",
+      "pic": ""
+    },
+    "4308": {
+      "node": "node_463",
+      "pic": ""
+    },
+    "4309": {
+      "node": "node_462",
+      "pic": ""
+    },
+    "4310": {
+      "node": "node_461",
+      "pic": ""
+    },
+    "4311": {
+      "node": "node_460",
+      "pic": ""
+    },
+    "4312": {
+      "node": "node_459",
+      "pic": ""
+    },
+    "4313": {
+      "node": "node_458",
+      "pic": ""
+    },
+    "4314": {
+      "node": "node_498",
+      "pic": ""
+    },
+    "4315": {
+      "node": "node_499",
+      "pic": ""
+    },
+    "4316": {
+      "node": "node_500",
+      "pic": ""
+    },
+    "4318": {
+      "node": "node_505",
+      "pic": ""
+    },
+    "4319": {
+      "node": "node_504",
+      "pic": ""
+    },
+    "4322": {
+      "node": "node_507",
+      "pic": ""
+    },
+    "4323": {
+      "node": "node_508",
+      "pic": ""
+    },
+    "4401": {
+      "node": "node_472",
+      "pic": ""
+    },
+    "4402": {
+      "node": "node_473",
+      "pic": ""
+    },
+    "4403": {
+      "node": "node_474",
+      "pic": ""
+    },
+    "4404": {
+      "node": "node_475",
+      "pic": ""
+    },
+    "4405": {
+      "node": "node_476",
+      "pic": ""
+    },
+    "4406": {
+      "node": "node_477",
+      "pic": ""
+    },
+    "4407": {
+      "node": "node_478",
+      "pic": ""
+    },
+    "4408": {
+      "node": "node_479",
+      "pic": ""
+    },
+    "4409": {
+      "node": "node_480",
+      "pic": ""
+    },
+    "4410": {
+      "node": "node_481",
+      "pic": ""
+    },
+    "4411": {
+      "node": "node_482",
+      "pic": ""
+    },
+    "4412": {
+      "node": "node_488",
+      "pic": ""
+    },
+    "4413": {
+      "node": "node_487",
+      "pic": ""
+    },
+    "4414": {
+      "node": "node_516",
+      "pic": ""
+    },
+    "4415": {
+      "node": "node_517",
+      "pic": ""
+    },
+    "4416": {
+      "node": "node_518",
+      "pic": ""
+    },
+    "exit": {
+      "node": "node_471",
+      "pic": ""
+    },
+    "Duty doctor": {
+      "node": "node_483",
+      "pic": ""
+    },
+    "Lift - 7": {
+      "node": "node_484",
+      "pic": ""
+    },
+    "Staff toilet": {
+      "node": "node_485",
+      "pic": ""
+    },
+    "Tea place": {
+      "node": "node_489",
+      "pic": ""
+    },
+    "Lift -6": {
+      "node": "node_490",
+      "pic": ""
+    },
+    "Store room": {
+      "node": "node_501",
+      "pic": ""
+    },
+    "House keeping desk": {
+      "node": "node_506",
+      "pic": ""
+    },
+    "DR1": {
+      "node": "node_509",
+      "pic": ""
+    },
+    "DR2": {
+      "node": "node_510",
+      "pic": ""
+    },
+    "ER": {
+      "node": "node_511",
+      "pic": ""
+    },
+    "Library": {
+      "node": "node_512",
+      "pic": ""
+    }
+  }
 }

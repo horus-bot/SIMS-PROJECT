@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import testData from "../../data/test_1.json"; // Direct import for node coordinates
 
 interface TestMapProps {
@@ -9,6 +9,17 @@ interface TestMapProps {
 }
 
 const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDeviated = false, isDarkMode = false }) => {
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+  // Load image to get natural dimensions
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.src = testData.meta.svg;
+  }, []);
+
   // Convert node IDs in routePath to coordinate points string for polyline
   const polylinePoints = useMemo(() => {
     if (!routePath || routePath.length < 2) return "";
@@ -45,8 +56,8 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
   return (
     <div style={{ 
         position: "relative", 
-        width: "4101px", 
-        height: "3025px",
+        width: dimensions.width ? `${dimensions.width}px` : "auto", 
+        height: dimensions.height ? `${dimensions.height}px` : "auto",
         // Enhanced 3D Plate Effect
         boxShadow: isDarkMode 
             ? "0 30px 60px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)"
@@ -58,10 +69,10 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
     }}>
       {/* 1. Base Map Image */}
       <img
-        src="/2nd_FloorSwathiEdition.svg"
+        src={testData.meta.svg}
         alt="Indoor Map"
-        width={4101}
-        height={3025}
+        width={dimensions.width || undefined}
+        height={dimensions.height || undefined}
         style={{ 
             position: "absolute", 
             inset: 0, 
@@ -76,8 +87,8 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
 
       {/* 2. SVG Overlay for Path */}
       <svg
-        width={4101}
-        height={3025}
+        width={dimensions.width || "100%"}
+        height={dimensions.height || "100%"}
         style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}
       >
         <defs>
@@ -150,7 +161,7 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
         )}
 
         {/* Draw Markers for start and end */}
-        {routePath.length > 0 && (
+        {routePath.length > 0 && dimensions.width > 0 && (
           <>
             {/* Start Node: Pulsing Dot */}
             <g transform={`translate(${(testData.nodes as any)[routePath[0]]?.x}, ${(testData.nodes as any)[routePath[0]]?.y})`}>
@@ -166,7 +177,7 @@ const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDe
                  {/* Destination Label */}
                  {(() => {
                     const endNodeId = routePath[routePath.length - 1];
-                    const destLabel = Object.entries((testData as any).destination || {}).find(([_, val]) => (val as any).node === endNodeId)?.[0];
+                    const destLabel = Object.entries((testData as any).destinations || {}).find(([_, val]) => (val as any).node === endNodeId)?.[0];
                     if (!destLabel) return null;
 
                     return (
