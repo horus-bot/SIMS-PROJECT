@@ -38,337 +38,14 @@ const MAP_W = 4101;
 const MAP_H = 3025;
 
 // --- Styles Object (Inline CSS) ---
-// Color Palettes
-const lightColors = {
-  primary: "#1E293B",
-  primaryDark: "#0F172A",
-  secondary: "#10B981",
-  accent: "#3B82F6",
-  background: "#F8FAFC",
-  surface: "#FFFFFF",
-  text: "#0F172A",
-  textSecondary: "#64748B",
-  lightBlue: "#E0F2FE",
-  lightGreen: "#ECFDF5",
-  lightPurple: "#FAF5FF",
-  border: "#E2E8F0",
-  glass: "rgba(255, 255, 255, 0.85)",
-  glassBorder: "rgba(0,0,0,0.05)",
-};
-
-const darkColors = {
-  primary: "#F1F5F9",        // Light text for dark mode
-  primaryDark: "#E2E8F0",    // Slightly darker text
-  secondary: "#34D399",      // Bright green
-  accent: "#60A5FA",         // Bright blue
-  background: "#0F172A",     // Deep dark blue/slate
-  surface: "#1E293B",        // Dark surface
-  text: "#F8FAFC",           // White text
-  textSecondary: "#94A3B8",  // Slate text
-  lightBlue: "#172554",      // Dark blue bg
-  lightGreen: "#064E3B",     // Dark green bg
-  lightPurple: "#581C87",    // Dark purple bg
-  border: "#334155",         // Dark border
-  glass: "rgba(30, 41, 59, 0.85)", // Dark glass
-  glassBorder: "rgba(255,255,255,0.1)",
-};
+import MapHeader from "../components/map-view/MapHeader";
+import MapControls from "../components/map-view/MapControls";
+import NavigationMenu from "../components/map-view/NavigationMenu";
+import LocationConfirmCard from "../components/map-view/LocationConfirmCard";
+import TurnConfirmCard from "../components/map-view/TurnConfirmCard";
+import { lightColors, darkColors } from "../components/map-view/theme";
 
 type NodeType = { x: number; y: number; type: string };
-
-// Hover Button Helper
-const ControlButton = ({ label, children, onClick, style }: { label: string, children: React.ReactNode, onClick: () => void, style?: React.CSSProperties }) => {
-    const [hover, setHover] = useState(false);
-    return (
-        <div 
-            style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-            onMouseEnter={() => setHover(true)}
-            onMouseLeave={() => setHover(false)}
-        >
-            <span style={{
-                ...style,
-                backgroundColor: "transparent", 
-                boxShadow: "none", 
-                border: "none",
-                width: "auto", height: "auto",
-                // Helper label styles
-                background: "rgba(0,0,0,0.7)", color: "white", padding: "4px 8px", borderRadius: "6px",
-                opacity: hover ? 1 : 0,
-                transform: hover ? 'translateX(0px)' : 'translateX(10px)',
-                transition: 'all 0.2s ease-out',
-                visibility: hover ? 'visible' : 'hidden',
-                marginRight: '12px', pointerEvents: 'none', fontSize: '12px'
-            }}>{label}</span>
-            
-            <button 
-                onClick={onClick}
-                style={{
-                    ...style,
-                    transform: hover ? 'scale(1.1)' : 'scale(1)',
-                    transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
-                }}
-            >
-                {children}
-            </button>
-        </div>
-    );
-};
-
-// Location Confirmation Card Component
-const LocationConfirmCard = ({ room, image, onConfirm, onReject }: { 
-    room: string; 
-    image: string; 
-    onConfirm: () => void; 
-    onReject: () => void; 
-}) => {
-    const onRejectRef = useRef(onReject);
-    onRejectRef.current = onReject;
-
-    // Auto-dismiss after 3s - Fixed Dependency
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (onRejectRef.current) onRejectRef.current();
-        }, 3000);
-        return () => clearTimeout(timer);
-    }, []);
-
-    return (
-        <div 
-            style={{
-                position: 'absolute',
-                bottom: '120px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '90%',
-                maxWidth: '380px',
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                backdropFilter: 'blur(12px)',
-                borderRadius: '20px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-                padding: '16px',
-                zIndex: 2000,
-                border: '1px solid rgba(255,255,255,0.5)',
-                overflow: 'hidden'
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-                <img
-                    src={image}
-                    alt={room}
-                    style={{
-                        width: '70px',
-                        height: '70px',
-                        borderRadius: '16px',
-                        objectFit: 'cover',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                    }}
-                />
-
-                <div style={{ marginLeft: '16px', flex: 1 }}>
-                    <p style={{
-                        color: '#6B7280',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        margin: '0 0 4px 0',
-                        display: 'flex', alignItems: 'center', gap: '4px'
-                    }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        Check Location
-                    </p>
-                    <p style={{
-                        fontSize: '18px',
-                        fontWeight: 700,
-                        margin: 0,
-                        color: '#111827',
-                        lineHeight: 1.2
-                    }}>
-                        {room}
-                    </p>
-                </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', position: 'relative', zIndex: 2 }}>
-                <button
-                    onClick={onReject}
-                    style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '12px',
-                        backgroundColor: 'rgba(243, 244, 246, 0.8)',
-                        color: '#374151',
-                        fontWeight: 600,
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px'
-                    }}
-                >
-                    Not Here (3s)
-                </button>
-
-                <button
-                    onClick={onConfirm}
-                    style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '12px',
-                        backgroundColor: '#10B981',
-                        color: 'white',
-                        fontWeight: 600,
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
-                    }}
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                    Yes, I'm here
-                </button>
-            </div>
-            
-            {/* Progress Bar */}
-            <div style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                height: '4px',
-                width: '100%',
-                background: '#E5E7EB'
-            }}>
-                <div style={{
-                    height: '100%',
-                    background: '#10B981',
-                    animation: 'countdown 3s linear forwards',
-                    width: '100%'
-                }} />
-                <style>{`
-                    @keyframes countdown {
-                        from { width: 100%; }
-                        to { width: 0%; }
-                    }
-                `}</style>
-            </div>
-        </div>
-    );
-};
-
-// Turn Confirmation Card Component
-const TurnConfirmCard = ({ onConfirm, onReject }: { 
-    onConfirm: () => void; 
-    onReject: () => void; 
-}) => {
-    const onRejectRef = useRef(onReject);
-    onRejectRef.current = onReject;
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (onRejectRef.current) onRejectRef.current();
-        }, 3000);
-        return () => clearTimeout(timer);
-    }, []);
-
-    return (
-        <div 
-            style={{
-                position: 'absolute',
-                bottom: '120px', 
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '90%',
-                maxWidth: '360px',
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                backdropFilter: 'blur(12px)',
-                borderRadius: '20px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                padding: '16px',
-                zIndex: 2000,
-                border: '1px solid rgba(255,255,255,0.5)',
-                overflow: 'hidden'
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{
-                    width: '64px',
-                    height: '64px',
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '28px',
-                    color: 'white',
-                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
-                }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="white" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
-                </div>
-
-                <div style={{ marginLeft: '16px', flex: 1 }}>
-                    <p style={{
-                        color: '#6B7280',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        margin: '0 0 4px 0',
-                        display: 'flex', alignItems: 'center', gap: '4px'
-                    }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-                        Check Point
-                    </p>
-                    <p style={{
-                        fontSize: '18px',
-                        fontWeight: 700,
-                        margin: 0,
-                        color: '#111827',
-                        lineHeight: 1.2
-                    }}>
-                        At the Corner?
-                    </p>
-                </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '16px', position: 'relative', zIndex: 2 }}>
-                <button
-                    onClick={onConfirm}
-                    style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '12px',
-                        backgroundColor: '#F59E0B',
-                        color: 'white',
-                        fontWeight: 600,
-                        border: 'none',
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
-                        fontSize: '16px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                    }}
-                >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                    Yes, Align Me
-                </button>
-            </div>
-            
-             {/* Progress Bar */}
-             <div style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                height: '4px',
-                width: '100%',
-                background: '#E5E7EB'
-            }}>
-                <div style={{
-                    height: '100%',
-                    background: '#F59E0B',
-                    animation: 'countdown 3s linear forwards',
-                    width: '100%'
-                }} />
-            </div>
-        </div>
-    );
-};
 
 const MapView = () => {
   const [searchParams] = useSearchParams();
@@ -393,15 +70,6 @@ const MapView = () => {
       position: "relative" as const,
       inset: "initial",
     } as CSSProperties,
-    header: {
-      background: colors.glass,
-      backdropFilter: "blur(12px)",
-      padding: "16px 20px",
-      boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
-      zIndex: 30,
-      flexShrink: 0,
-      borderBottom: `1px solid ${colors.glassBorder}`,
-    },
     mapSection: {
       position: "absolute" as const,
       top: 0, left: 0, right: 0, bottom: 0,
@@ -410,36 +78,6 @@ const MapView = () => {
       overflow: "hidden",
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 0,
-    },
-    menuSection: {
-      position: "absolute" as const,
-      bottom: "20px", left: "20px", right: "20px",
-      backgroundColor: colors.surface, 
-      borderRadius: "24px",
-      display: "flex", alignItems: "center", justifyContent: "space-between", 
-      padding: "16px", gap: "12px",
-      zIndex: 100,
-      boxShadow: isDarkMode ? "0 10px 40px rgba(0,0,0,0.5)" : "0 10px 40px rgba(0,0,0,0.15)",
-      border: `1px solid ${colors.border}`,
-    },
-    stepBtnPrimary: {
-      flex: 2, height: "50px", borderRadius: "25px", border: "none",
-      fontSize: "16px", fontWeight: 700, cursor: "pointer",
-      display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-      backgroundColor: colors.accent,
-      color: "#FFFFFF",
-      boxShadow: `0 4px 12px ${isDarkMode ? 'rgba(96, 165, 250, 0.4)' : 'rgba(37, 99, 235, 0.3)'}`,
-      transition: "transform 0.1s ease",
-    },
-    stepBtnSecondary: {
-      width: "50px", height: "50px", flex: "none", borderRadius: "25px",
-      border: `1px solid ${colors.border}`,
-      fontSize: "24px", fontWeight: 600, cursor: "pointer",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      backgroundColor: isDarkMode ? colors.background : "#F9FAFB",
-      color: colors.textSecondary,
-      boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-      transition: "all 0.2s ease",
     },
     viewport: {
       width: "100%", height: "100%", position: "relative" as const, overflow: "hidden",
@@ -451,15 +89,6 @@ const MapView = () => {
     },
     camera: {
       position: "absolute" as const, inset: 0, transformOrigin: "0 0", willChange: "transform",
-    },
-    controlLabel: {
-      backgroundColor: colors.glass,
-      color: colors.text,
-      padding: "4px 8px", borderRadius: "6px", fontSize: "12px",
-      fontWeight: 600, backdropFilter: "blur(4px)",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-      whiteSpace: "nowrap", pointerEvents: "none",
-      border: `1px solid ${colors.glassBorder}`,
     },
   }), [colors, isDarkMode]);
 
@@ -988,58 +617,11 @@ const MapView = () => {
 
   return (
     <div style={styles.container}>
-      {/* Header with Building and Floor Info */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        left: '80px',
-        right: '20px',
-        height: '44px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        backdropFilter: 'blur(8px)',
-        borderRadius: '22px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-        border: '1px solid rgba(255,255,255,0.5)',
-        zIndex: 100,
-      }}>
-        <div style={{
-          fontSize: '16px',
-          fontWeight: 'bold',
-          color: '#374151',
-          textAlign: 'center',
-        }}>
-          {typedTestData.meta.building} - {typedTestData.meta.floorName}
-        </div>
-      </div>
-
-      {/* Back Button / Exit */}
-      <button 
-        onClick={() => navigate('/')}
-        style={{
-            position: 'absolute',
-            top: '20px',
-            left: '20px',
-            width: '44px',
-            height: '44px',
-            borderRadius: '50%',
-            backgroundColor: 'white',
-            border: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '20px',
-            fontWeight: 'bold',
-            color: '#374151',
-            cursor: 'pointer',
-            zIndex: 100, // Top level
-        }}
-      >
-        ←
-      </button>
+      <MapHeader 
+        buildingName={typedTestData.meta.building} 
+        floorName={typedTestData.meta.floorName} 
+        onBack={() => navigate('/')} 
+      />
 
       <div style={styles.mapSection}>
         {isNavActive && (
@@ -1057,7 +639,7 @@ const MapView = () => {
         >
           <div ref={map3DRef} style={styles.map3DWrapper}>
             <div ref={cameraLayerRef} style={styles.camera}>
-                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} isDarkMode={isDarkMode} />
+                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
                 <div style={{
                   position: "absolute",
                   left: snappedPos.x,
@@ -1132,168 +714,19 @@ const MapView = () => {
             </div>
           </div>
           
-          <div style={{ position: "absolute", top: "100px", right: "20px", display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 200, alignItems: 'flex-end' }}>
-            
-            {/* Dark Mode Toggle */}
-            <ControlButton 
-                label={isDarkMode ? "Light Mode" : "Dark Mode"} 
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "16px",
-                   backgroundColor: isDarkMode ? "#334155" : "rgba(255, 255, 255, 0.9)",
-                   color: isDarkMode ? "#FCD34D" : "#475569", // Yellow moon or slate sun
-                   backdropFilter: "blur(8px)", border: `1px solid ${isDarkMode ? "rgba(255,255,255,0.1)" : colors.border}`,
-                   fontSize: "22px", display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                }}
-            >
-               {isDarkMode ? "🌙" : "☀️"}
-            </ControlButton>
-            
-            {/* Speed & Distance Buttons (Only when navigating) */}
-            {isNavActive && (
-              <>
-                 <div style={{
-                    width: "50px", height: "50px", borderRadius: "16px",
-                    backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
-                    backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                    fontSize: "10px", fontWeight: "bold", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    pointerEvents: "none"
-                 }}>
-                    <div style={{fontSize: "16px"}}>🏃</div>
-                    <div>{(currentSpeed * 3.6).toFixed(1)}</div>
-                 </div>
-
-                 <div style={{
-                    width: "50px", height: "50px", borderRadius: "16px",
-                    backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
-                    backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                    fontSize: "10px", fontWeight: "bold", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    pointerEvents: "none"
-                 }}>
-                    <div style={{fontSize: "16px"}}>📍</div>
-                    <div>{navState.totalRem.toFixed(0)}m</div>
-                 </div>
-              </>
-            )}
-
-            <ControlButton 
-                label="Recenter" 
-                onClick={handleRecenter}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "16px",
-                   backgroundColor: autoFollow ? colors.accent : "rgba(255, 255, 255, 0.9)",
-                   color: autoFollow ? "white" : colors.primary,
-                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                   fontSize: "24px", display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                }}
-            >
-               ⌖
-            </ControlButton>
-
-            <ControlButton 
-                label="Zoom In" 
-                onClick={() => handleZoom('in')}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "16px",
-                   backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
-                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                   fontSize: "24px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                }}
-            >
-               +
-            </ControlButton>
-
-            <ControlButton 
-                label="Zoom Out" 
-                onClick={() => handleZoom('out')}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "16px",
-                   backgroundColor: "rgba(255, 255, 255, 0.9)", color: colors.primary,
-                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                   fontSize: "24px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                }}
-            >
-               −
-            </ControlButton>
-
-            <ControlButton 
-                label={isMuted ? "Unmute Voice" : "Mute Voice"} 
-                onClick={() => setIsMuted(!isMuted)}
-                style={{
-                   width: "50px", height: "50px", borderRadius: "16px",
-                   backgroundColor: isMuted ? "#EF4444" : "rgba(255, 255, 255, 0.9)",
-                   color: isMuted ? "white" : colors.primary,
-                   backdropFilter: "blur(8px)", border: `1px solid ${colors.secondary}`,
-                   fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-                }}
-            >
-               {isMuted ? (
-                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                   <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor"/>
-                   <line x1="16" y1="8" x2="20" y2="12" stroke="currentColor" strokeWidth="2"/>
-                   <line x1="20" y1="8" x2="16" y2="12" stroke="currentColor" strokeWidth="2"/>
-                 </svg>
-               ) : (
-                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                   <path d="M3 9V15H7L12 20V4L7 9H3Z" fill="currentColor"/>
-                   <path d="M16 9C16.5523 9 17 9.44772 17 10V14C17 14.5523 16.5523 15 16 15" stroke="currentColor" strokeWidth="2"/>
-                   <path d="M19 7C20.1046 7 21 7.89543 21 9V15C21 16.1046 20.1046 17 19 17" stroke="currentColor" strokeWidth="2"/>
-                 </svg>
-               )}
-            </ControlButton>
-
-            {/* Turn Instruction - Below Icons */}
-            {isNavActive && (
-              <div style={{ marginTop: '10px', marginRight: '30px', width: '260px' }}>
-                <div style={{
-                   backgroundColor: "rgba(255, 255, 255, 0.95)",
-                   backdropFilter: "blur(16px)",
-                   borderRadius: "24px",
-                   padding: "10px",
-                   paddingRight: "24px",
-                   boxShadow: "0 12px 40px rgba(0,0,0,0.12)",
-                   display: "flex",
-                   alignItems: "center",
-                   gap: "16px",
-                   border: "1px solid rgba(255,255,255,0.6)"
-                }}>
-                   {/* Icon Container */}
-                   <div style={{
-                      width: "56px", 
-                      height: "56px", 
-                      borderRadius: "18px", 
-                      background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center",
-                      color: "white",
-                      fontSize: "28px",
-                      boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)",
-                      flexShrink: 0
-                   }}>
-                      {navState.turnType === 'left' ? '↰' : navState.turnType === 'right' ? '↱' : navState.turnType === 'finish' ? '🏁' : '↑'}
-                   </div>
-                   
-                   {/* Text Info */}
-                   <div style={{display: "flex", flexDirection: "column", gap: "2px"}}>
-                      <span style={{fontSize: "18px", fontWeight: 700, color: colors.primary, lineHeight: 1.2}}>
-                         {navState.turnType === 'left' ? 'Turn Left' : navState.turnType === 'right' ? 'Turn Right' : navState.turnType === 'finish' ? 'Destination' : 'Go Straight'}
-                      </span>
-                      <span style={{fontSize: "14px", color: colors.textSecondary, fontWeight: 500}}>
-                         in <span style={{color: colors.primary, fontWeight: 700}}>{navState.distToTurn.toFixed(0)}</span> meters
-                      </span>
-                   </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <MapControls 
+            isDarkMode={isDarkMode}
+            setIsDarkMode={setIsDarkMode}
+            isNavActive={isNavActive}
+            currentSpeed={currentSpeed}
+            navState={navState}
+            onRecenter={handleRecenter}
+            onZoomIn={() => handleZoom('in')}
+            onZoomOut={() => handleZoom('out')}
+            isMuted={isMuted}
+            setIsMuted={setIsMuted}
+            autoFollow={autoFollow}
+          />
         </div>
 
 
@@ -1390,41 +823,14 @@ const MapView = () => {
         </div>
       )}
       
-      {/* Footer Menu */}
-      <div style={styles.menuSection}>
-        {/* Manual Control (Prev) */}
-        <button style={styles.stepBtnSecondary} onClick={handlePrevStep} aria-label="Previous Step">
-             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-        </button>
-
-        {/* Center Toggle: Start Live vs Stop */}
-        {!isNavActive ? (
-          <button 
-            style={styles.stepBtnPrimary} 
-            onClick={startNavigation}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-            <span>Start Live Tracking</span>
-          </button>
-        ) : (
-          <button 
-            style={{...styles.stepBtnPrimary, backgroundColor: "#FFF1F2", color: "#E11D48", boxShadow: "none", border: "1px solid #FECDD3"}} 
-            onClick={() => setIsNavActive(false)}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> 
-            <span>Exit Navigation</span>
-          </button>
-        )}
-
-        {/* Manual Control (Next) */}
-        <button 
-            style={styles.stepBtnSecondary} 
-            onClick={handleNextStep}
-            aria-label="Next Step"
-        >
-             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-        </button>
-      </div>
+      <NavigationMenu 
+        isNavActive={isNavActive}
+        onStartNavigation={startNavigation}
+        onStopNavigation={() => setIsNavActive(false)}
+        onPrevStep={handlePrevStep}
+        onNextStep={handleNextStep}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };
