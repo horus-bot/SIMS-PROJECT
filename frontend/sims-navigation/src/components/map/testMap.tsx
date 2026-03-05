@@ -192,13 +192,13 @@ const TestMap: React.FC<TestMapProps> = ({
         <defs>
 
           {/* Shadow effect used for path glow */}
-          <filter id="pathShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="pathShadow" x="-10%" y="-10%" width="120%" height="120%">
             <feDropShadow
               dx="0"
-              dy="6"
-              stdDeviation="6"
+              dy="2"
+              stdDeviation="2"
               floodColor="#3B82F6"
-              floodOpacity="0.25"
+              floodOpacity="0.12"
             />
           </filter>
 
@@ -217,22 +217,14 @@ const TestMap: React.FC<TestMapProps> = ({
         {polylinePoints && (
           <g filter="url(#pathShadow)">
 
-            {/* Outer casing */}
-            <polyline
-              points={polylinePoints}
-              fill="none"
-              stroke={colors.pathStroke}
-              strokeWidth="28"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            {/* Outer casing removed: rendering only the main colored route */}
 
             {/* Main route line */}
             <polyline
               points={polylinePoints}
               fill="none"
               stroke={colors.pathMain}
-              strokeWidth="18"
+              strokeWidth="8"
               strokeLinecap="round"
               strokeLinejoin="round"
             />

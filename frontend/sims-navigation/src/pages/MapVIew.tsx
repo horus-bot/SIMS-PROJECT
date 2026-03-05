@@ -12,7 +12,6 @@ import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/usePDR";
 import { applyCRFConstraints } from "../utils/mapMatching";
 
-import MapHeader from "../components/map-view/MapHeader";
 import MapControls from "../components/map-view/MapControls";
 import NavigationMenu from "../components/map-view/NavigationMenu";
 import LocationConfirmCard from "../components/map-view/LocationConfirmCard";
@@ -30,8 +29,8 @@ type NodeType = { x: number; y: number; type: string };
 const typedTestData = testData as TestData;
 const MAP_W = 4101;
 const MAP_H = 3025;
-const FIXED_PITCH = 50; // locked 3D tilt
-const ZOOM_MULT = 2.3; // multiplier to make initial view more zoomed in
+const FIXED_PITCH = 0; // locked 3D tilt
+const ZOOM_MULT = 4.3; // multiplier to make initial view more zoomed in
 
 const MapView = () => {
   const [searchParams] = useSearchParams();
@@ -154,7 +153,7 @@ const MapView = () => {
       const n2 = nodeMap[routePath[i + 1]];
       totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
     }
-    const PX_PER_M = 50;
+    const PX_PER_M = 12.2;
     return { turnType, distToTurn: Math.max(0, distToTurn / PX_PER_M), totalRem: Math.max(0, totalRem / PX_PER_M) };
   }, [snappedPos, routePath, nodeMap]);
 
@@ -269,7 +268,7 @@ const MapView = () => {
   const viewportRef = useRef<HTMLDivElement>(null);
   const map3DRef = useRef<HTMLDivElement>(null);
   const cameraLayerRef = useRef<HTMLDivElement>(null);
-  const [autoFollow, setAutoFollow] = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialGesture = useRef<{ dist: number; angle: number; bearing: number } | null>(null);
@@ -325,13 +324,57 @@ const MapView = () => {
     });
   }, [snappedPos, autoFollow]);
 
-  const clampCamera = (nx: number, ny: number, nz: number) => {
+  // Keep the user's pointer (snapped position) inside the viewport 'safe box'
+  // This nudges the camera if the pointer approaches the viewport edges.
+  useEffect(() => {
+    if (!viewportRef.current || !cameraLayerRef.current) return;
+    // do not fight the user's active gestures
+    if (pointers.current.size > 0) return;
+
+    const vp = viewportRef.current;
+    const { zoom, x: curX, y: curY } = camState.current;
+    const screenX = snappedPos.x * zoom + curX;
+    const screenY = snappedPos.y * zoom + curY;
+
+    const marginX = vp.clientWidth * 0.20; // 20% horizontal safe margin
+    const marginY = vp.clientHeight * 0.20; // 20% vertical safe margin
+
+    let targetX = curX;
+    let targetY = curY;
+    let moved = false;
+
+    if (screenX < marginX) { targetX = curX + (marginX - screenX); moved = true; }
+    else if (screenX > vp.clientWidth - marginX) { targetX = curX - (screenX - (vp.clientWidth - marginX)); moved = true; }
+
+    if (screenY < marginY) { targetY = curY + (marginY - screenY); moved = true; }
+    else if (screenY > vp.clientHeight - marginY) { targetY = curY - (screenY - (vp.clientHeight - marginY)); moved = true; }
+
+    if (moved) {
+      // Keep pointer comfortably inside a 20% safe margin when nudging
+      const c = clampCamera(targetX, targetY, camState.current.zoom, snappedPos, 0.20);
+      gsap.to(cameraLayerRef.current, { x: c.x, y: c.y, duration: 0.45, ease: "power3.out", onComplete: () => { camState.current.x = c.x; camState.current.y = c.y; } });
+    }
+  }, [snappedPos]);
+
+  // Clamp camera to map bounds and optionally ensure a focus point (e.g. snappedPos)
+  // remains inside a viewport margin. This guarantees the user's pointer stays
+  // visible during panning and zooming gestures.
+  const clampCamera = (
+    nx: number,
+    ny: number,
+    nz: number,
+    focus?: { x: number; y: number },
+    marginPercent = 0.05,
+  ) => {
     const vp = viewportRef.current;
     if (!vp) return { x: nx, y: ny, z: nz };
     const vpW = vp.clientWidth;
     const vpH = vp.clientHeight;
     const minZoom = Math.max(vpW / MAP_W, vpH / MAP_H);
-    const z = Math.max(nz, minZoom);
+    let z = Math.max(nz, minZoom);
+    // Ensure the scaled map fills the box; increase zoom slightly if needed.
+    const maxZoom = 8;
+    while ((MAP_W * z < vpW || MAP_H * z < vpH) && z < maxZoom) z = Math.min(maxZoom, z * 1.1);
     const minX = vpW - MAP_W * z;
     const maxX = 0;
     const minY = vpH - MAP_H * z;
@@ -342,10 +385,63 @@ const MapView = () => {
     let ry = ny;
     if (minY > maxY) ry = (vpH - MAP_H * z) / 2;
     else ry = Math.min(maxY, Math.max(minY, ny));
+
+    // If a focus point is provided, ensure it stays within the margin area
+    if (focus) {
+      const marginX = vpW * marginPercent;
+      const marginY = vpH * marginPercent;
+      const screenX = focus.x * z + rx;
+      const screenY = focus.y * z + ry;
+
+      if (screenX < marginX) rx = Math.min(maxX, rx + (marginX - screenX));
+      else if (screenX > vpW - marginX) rx = Math.max(minX, rx - (screenX - (vpW - marginX)));
+
+      if (screenY < marginY) ry = Math.min(maxY, ry + (marginY - screenY));
+      else if (screenY > vpH - marginY) ry = Math.max(minY, ry - (screenY - (vpH - marginY)));
+
+      // Edge-case: if the focus still lies outside the visible box because the
+      // map is pinned to its bounds, try small zoom increases to bring it in.
+      let finalScreenX = focus.x * z + rx;
+      let finalScreenY = focus.y * z + ry;
+      if ((finalScreenX < 0 || finalScreenX > vpW || finalScreenY < 0 || finalScreenY > vpH) && z < maxZoom) {
+        let tryZ = z;
+        let tries = 0;
+        while (tries < 8) {
+          tries++;
+          tryZ = Math.min(maxZoom, tryZ * 1.08);
+          const tryMinX = vpW - MAP_W * tryZ;
+          const tryMaxX = 0;
+          const tryMinY = vpH - MAP_H * tryZ;
+          const tryMaxY = 0;
+          const tryRx = Math.min(tryMaxX, Math.max(tryMinX, rx));
+          const tryRy = Math.min(tryMaxY, Math.max(tryMinY, ry));
+          const tryScreenX = focus.x * tryZ + tryRx;
+          const tryScreenY = focus.y * tryZ + tryRy;
+          if (tryScreenX >= 0 && tryScreenX <= vpW && tryScreenY >= 0 && tryScreenY <= vpH) {
+            z = tryZ; rx = tryRx; ry = tryRy; break;
+          }
+          if (tryZ >= maxZoom) break;
+        }
+        finalScreenX = focus.x * z + rx;
+        finalScreenY = focus.y * z + ry;
+      }
+
+      // If still barely out of bounds, nudge so the focus is just inside the view
+      // without moving the map beyond its bounds (place ~8px padding).
+      const pad = 8;
+      if (finalScreenX < pad) rx = Math.min(maxX, Math.max(minX, rx + (pad - finalScreenX)));
+      else if (finalScreenX > vpW - pad) rx = Math.min(maxX, Math.max(minX, rx - (finalScreenX - (vpW - pad))));
+
+      if (finalScreenY < pad) ry = Math.min(maxY, Math.max(minY, ry + (pad - finalScreenY)));
+      else if (finalScreenY > vpH - pad) ry = Math.min(maxY, Math.max(minY, ry - (finalScreenY - (vpH - pad))));
+    }
+
     return { x: rx, y: ry, z };
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     setAutoFollow(false);
@@ -365,6 +461,7 @@ const MapView = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    e.preventDefault();
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1 && lastPointer.current) {
@@ -375,22 +472,31 @@ const MapView = () => {
       const sin = Math.sin(rad);
       const nx = camState.current.x + dx * cos + dy * sin;
       const ny = camState.current.y + dy * cos - dx * sin;
-      const c = clampCamera(nx, ny, camState.current.zoom);
+      // Keep the snapped pointer in view while the user pans (small margin)
+      const c = clampCamera(nx, ny, camState.current.zoom, snappedPos, 0.05);
       gsap.set(cameraLayerRef.current, { x: c.x, y: c.y });
       camState.current.x = c.x;
       camState.current.y = c.y;
       lastPointer.current = { x: e.clientX, y: e.clientY };
     } else if (pointers.current.size === 2 && initialGesture.current) {
+      // Two-finger gesture: handle pinch zoom but DO NOT rotate the map.
       const pts = Array.from(pointers.current.values());
-      const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
-      const rot = (angle - initialGesture.current.angle) * (180 / Math.PI);
-      const newBearing = initialGesture.current.bearing + rot;
-      gsap.set(map3DRef.current, { rotateZ: newBearing });
-      camState.current.bearing = newBearing;
+      const newDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const scaleChange = newDist / initialGesture.current.dist;
+      const targetZoom = camState.current.zoom * scaleChange;
+      // When pinch-zooming, keep the snapped pointer inside a small margin
+      const c = clampCamera(camState.current.x, camState.current.y, targetZoom, snappedPos, 0.05);
+      gsap.set(cameraLayerRef.current, { scale: c.z, x: c.x, y: c.y });
+      camState.current.zoom = c.z;
+      // update gesture baseline for smooth continuous pinch
+      initialGesture.current.dist = newDist;
+      // keep bearing unchanged (no rotation from gesture)
+      camState.current.bearing = camState.current.bearing || 0;
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    e.preventDefault();
     (e.target as Element).releasePointerCapture(e.pointerId);
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) initialGesture.current = null;
@@ -410,7 +516,8 @@ const MapView = () => {
     setAutoFollow(false);
     const { zoom, x, y } = camState.current;
     const nz = dir === "in" ? zoom * 1.35 : zoom / 1.35;
-    const c = clampCamera(x, y, nz);
+    // Ensure the snapped pointer remains visible after zoom
+    const c = clampCamera(x, y, nz, snappedPos, 0.05);
     gsap.to(cameraLayerRef.current, { scale: c.z, x: c.x, y: c.y, duration: 0.4, ease: "power3.out" });
     camState.current.zoom = c.z;
     camState.current.x = c.x;
@@ -420,24 +527,29 @@ const MapView = () => {
   if (!originId || !destId) return <div style={{ padding: 20, color: "#374151" }}>Invalid Route</div>;
 
   return (
-    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", overflow: "hidden", background: "#E8EAED", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", overflow: "hidden", background: "transparent", fontFamily: "'Inter', system-ui, sans-serif" }}>
 
-      {/* Full-screen Map Canvas */}
-      <div
-        ref={viewportRef}
-        style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#F0F2F5", touchAction: "none" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-      >
-        <div ref={map3DRef} style={{ width: "100%", height: "100%", transformStyle: "preserve-3d" as const, willChange: "transform" }}>
-          <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
+      {/* Map Box: centered clipped container that only displays the map */}
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", pointerEvents: "none", zIndex: 1, touchAction: "none", userSelect: "none" }}>
+        <div style={{ width: "100%", maxWidth: "100%", height: "75vh", overflow: "hidden", pointerEvents: "auto", position: "relative", boxSizing: "border-box", touchAction: "none", userSelect: "none" }}>
+            <div
+            ref={viewportRef}
+            style={{ position: "absolute", inset: 0, overflow: "hidden", background: "transparent", touchAction: "none" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onTouchStart={(e) => { e.preventDefault(); }}
+            onTouchMove={(e) => { e.preventDefault(); }}
+            onWheel={(e) => { e.preventDefault(); }}
+          >
+            <div ref={map3DRef} style={{ width: "100%", height: "100%", transformStyle: "preserve-3d" as const, willChange: "transform" }}>
+              <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
 
-            <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
+                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} />
 
-            {destinationMarkers.map((dest) => {
+                {destinationMarkers.map((dest) => {
               const dist = Math.hypot(snappedPos.x - dest.x, snappedPos.y - dest.y);
               const near = dist < 250;
               // compute dynamic label scale from camera zoom (clamped)
@@ -490,17 +602,15 @@ const MapView = () => {
                 <path d="M60 45 L69 57 L51 57 Z" fill="#4285F4" />
               </svg>
             </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Floating UI */}
 
-      <MapHeader
-        buildingName={typedTestData.meta.building}
-        floorName={typedTestData.meta.floorName}
-        onBack={() => navigate("/")}
-      />
+      {/* Top header removed per request */}
 
       {isNavActive && navState.turnType !== "straight" && (
         <div style={{
