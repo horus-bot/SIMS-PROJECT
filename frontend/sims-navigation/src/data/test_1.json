@@ -4,7 +4,7 @@
     "floorName": "Fourth Floor",
     "svg": "/SIMS_MAP_.svg"
   },
-  "nodes": {
+ "nodes": {
     "node_001": {
       "x": 89.5,
       "y": 611.5,
@@ -4709,7 +4709,8 @@
     {
       "from": "node_141",
       "to": "node_181"
-    },  {
+    },
+    {
       "from": "node_001",
       "to": "node_002"
     }
