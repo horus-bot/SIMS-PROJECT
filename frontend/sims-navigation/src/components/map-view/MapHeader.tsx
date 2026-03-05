@@ -8,60 +8,52 @@ interface MapHeaderProps {
 
 const MapHeader: React.FC<MapHeaderProps> = ({ buildingName, floorName, onBack }) => {
   return (
-    <>
-      {/* Header with Building and Floor Info */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        left: '80px',
-        right: '20px',
-        height: '44px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        backdropFilter: 'blur(8px)',
-        borderRadius: '22px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-        border: '1px solid rgba(255,255,255,0.5)',
-        zIndex: 100,
-      }}>
-        <div style={{
-          fontSize: '16px',
-          fontWeight: 'bold',
-          color: '#374151',
-          textAlign: 'center',
-        }}>
-          {buildingName} - {floorName}
-        </div>
-      </div>
-
+    <div style={{
+      position: 'absolute',
+      top: '16px',
+      left: '16px',
+      right: '16px',
+      height: '48px',
+      display: 'flex',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderRadius: '24px',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+      zIndex: 100,
+      padding: '0 12px',
+    }}>
       {/* Back Button / Exit */}
       <button 
         onClick={onBack}
         style={{
-            position: 'absolute',
-            top: '20px',
-            left: '20px',
-            width: '44px',
-            height: '44px',
+            width: '40px',
+            height: '40px',
             borderRadius: '50%',
-            backgroundColor: 'white',
+            backgroundColor: 'transparent',
             border: 'none',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '20px',
-            fontWeight: 'bold',
-            color: '#374151',
             cursor: 'pointer',
-            zIndex: 100, // Top level
+            padding: 0,
         }}
       >
-        ←
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
       </button>
-    </>
+
+      <div style={{
+        flex: 1,
+        fontSize: '15px',
+        fontWeight: '600',
+        color: '#1F2937',
+        textAlign: 'center',
+        paddingRight: '40px',
+      }}>
+        {buildingName} • {floorName}
+      </div>
+    </div>
   );
 };
 

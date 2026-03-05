@@ -143,8 +143,7 @@ const TestMap: React.FC<TestMapProps> = ({
         position: "relative",
         width: dimensions.width ? `${dimensions.width}px` : "auto",
         height: dimensions.height ? `${dimensions.height}px` : "auto",
-        background: "#ffffff",
-        borderRadius: "8px",
+        background: "transparent",
         overflow: "hidden"
       }}
     >
