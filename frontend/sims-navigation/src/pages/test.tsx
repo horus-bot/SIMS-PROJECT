@@ -147,26 +147,12 @@ const Test: React.FC = () => {
   // Calculate simulated path
   useEffect(() => {
     if (mode === 'simulate' && simNodes.start && simNodes.end) {
-      // Create graph weight map from edges
-      const graph: Record<string, { node: string; weight: number }[]> = {};
-      mapData.edges.forEach(edge => {
-        const n1 = mapData.nodes[edge.from];
-        const n2 = mapData.nodes[edge.to];
-        if (!n1 || !n2) return;
-        const dist = Math.sqrt(Math.pow(n1.x - n2.x, 2) + Math.pow(n1.y - n2.y, 2));
-        
-        if (!graph[edge.from]) graph[edge.from] = [];
-        if (!graph[edge.to]) graph[edge.to] = [];
-        graph[edge.from].push({ node: edge.to, weight: dist });
-        graph[edge.to].push({ node: edge.from, weight: dist });
-      });
-
-      const path = findShortestPath(simNodes.start, simNodes.end, mapData.nodes, graph);
+      const path = findShortestPath(simNodes.start, simNodes.end, mapData.nodes, mapData.edges);
       setSimPath(path);
     } else {
       setSimPath([]);
     }
-  }, [simNodes, mode]);
+  }, [simNodes, mode, mapData.nodes, mapData.edges]);
 
   const getSvgCoords = (e: React.MouseEvent | MouseEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
