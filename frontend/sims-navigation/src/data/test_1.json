@@ -154,7 +154,6 @@
   
   "edges": [
     { "from": "node_001", "to": "node_002" },
-    
     { "from": "node_002", "to": "node_003" },
     { "from": "node_003", "to": "node_008" },
     { "from": "node_008", "to": "node_010" },
@@ -248,7 +247,88 @@
     { "from": "node_078", "to": "node_077" },
     { "from": "node_077", "to": "node_078" },
     { "from": "node_019", "to": "node_017" },
-    { "from": "node_017", "to": "node_019" }
+    { "from": "node_017", "to": "node_019" },
+    { "from": "node_005", "to": "node_011" },
+    { "from": "node_011", "to": "node_005" },
+    { "from": "node_015", "to": "node_006" },
+    { "from": "node_006", "to": "node_015" },
+    { "from": "node_017", "to": "node_007" },
+    { "from": "node_007", "to": "node_017" },
+    { "from": "node_002", "to": "node_009" },
+    { "from": "node_009", "to": "node_002" },
+    { "from": "node_015", "to": "node_014" },
+    { "from": "node_014", "to": "node_015" },
+    { "from": "node_034", "to": "node_033" },
+    { "from": "node_033", "to": "node_034" },
+    { "from": "node_037", "to": "node_038" },
+    { "from": "node_038", "to": "node_037" },
+    { "from": "node_043", "to": "node_044" },
+    { "from": "node_044", "to": "node_043" },
+    { "from": "node_116", "to": "node_088" },
+    { "from": "node_088", "to": "node_116" },
+
+    { "from": "node_115", "to": "node_090" },
+    { "from": "node_090", "to": "node_115" },
+
+    { "from": "node_096", "to": "node_095" },
+    { "from": "node_095", "to": "node_096" },
+    { "from": "node_100", "to": "node_098" },
+    { "from": "node_098", "to": "node_100" },
+
+    { "from": "node_098", "to": "node_099" },
+    { "from": "node_099", "to": "node_098" },
+
+    { "from": "node_105", "to": "node_102" },
+    { "from": "node_102", "to": "node_105" },
+
+    { "from": "node_102", "to": "node_104" },
+    { "from": "node_104", "to": "node_102" },
+
+    { "from": "node_109", "to": "node_108" },
+    { "from": "node_108", "to": "node_109" },
+
+    { "from": "node_108", "to": "node_110" },
+    { "from": "node_110", "to": "node_108" },
+
+    { "from": "node_114", "to": "node_112" },
+    { "from": "node_112", "to": "node_114" },
+
+    { "from": "node_112", "to": "node_113" },
+    { "from": "node_113", "to": "node_112" },
+    { "from": "node_086", "to": "node_053" },
+    { "from": "node_053", "to": "node_086" },
+
+    { "from": "node_086", "to": "node_087" },
+    { "from": "node_087", "to": "node_086" },
+
+    { "from": "node_123", "to": "node_117" },
+    { "from": "node_117", "to": "node_123" },
+
+    { "from": "node_058", "to": "node_117" },
+    { "from": "node_117", "to": "node_058" },
+
+    { "from": "node_117", "to": "node_118" },
+    { "from": "node_118", "to": "node_117" },
+
+
+    { "from": "node_118", "to": "node_119" },
+    { "from": "node_119", "to": "node_118" },
+
+    { "from": "node_119", "to": "node_121" },
+    { "from": "node_121", "to": "node_119" },
+
+    { "from": "node_119", "to": "node_120" },
+    { "from": "node_120", "to": "node_119" },
+
+    { "from": "node_120", "to": "node_122" },
+    { "from": "node_122", "to": "node_120" },
+    { "from": "node_084", "to": "node_063" },
+    { "from": "node_063", "to": "node_084" },
+
+    { "from": "node_083", "to": "node_065" },
+    { "from": "node_065", "to": "node_083" },
+    { "from": "node_085", "to": "node_054" },
+    { "from": "node_054", "to": "node_085" }
   ],
  "destination": {
   "BW204": {
@@ -290,6 +370,22 @@
   "NS LAB": {
     "node": "node_078",
     "pic": "nsLab.jpeg"
+  },
+  "BW205": {
+    "node": "node_014",
+    "pic": "B205.jpeg"
+  },
+  "Staff Restroom room": {
+    "node": "node_034",
+    "pic": "Staff Restroom room.jpeg"
+  },
+  "Electronic and circuit Lab": {
+    "node": "node_038",
+    "pic": "Electronic and circuit Lab.jpeg"
+  },
+  "Microwave and optimal com": {
+    "node": "node_044",
+    "pic": "Microwave and optimal com.jpeg"
   },
   "CDC LAB": {
     "node": "node_070",
