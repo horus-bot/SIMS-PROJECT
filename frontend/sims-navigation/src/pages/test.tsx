@@ -43,20 +43,62 @@ const Test: React.FC = () => {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
 
-  const svgRef = useRef<SVGSVGElement>(null);
   const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five'>('4th');
   const lastSavedRef = useRef<string>('');
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'synced'>('synced');
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [past, setPast] = useState<MapData[]>([]);
+  const [future, setFuture] = useState<MapData[]>([]);
+  const dragStartStateRef = useRef<MapData | null>(null);
+
   const STORAGE_KEY = `sims_map_draft_${selectedMap}`;
+
+  const takeSnapshot = () => {
+    setPast(prev => [...prev.slice(-29), mapData]); // Keep last 30 steps
+    setFuture([]);
+  };
+
+  const undo = () => {
+    if (past.length === 0) return;
+    const previous = past[past.length - 1];
+    setFuture(prev => [mapData, ...prev]);
+    setPast(prev => prev.slice(0, prev.length - 1));
+    setMapData(previous);
+  };
+
+  const redo = () => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setPast(prev => [...prev, mapData]);
+    setFuture(prev => prev.slice(1));
+    setMapData(next);
+  };
 
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
+      // Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       switch (e.key.toLowerCase()) {
         case 'v': setMode('view'); break;
         case 'n': setMode('add_path'); break;
@@ -64,11 +106,27 @@ const Test: React.FC = () => {
         case 'd': setMode('delete'); break;
         case 't': setMode('simulate'); break;
         case 's': saveOnly(); break;
+        case '0': setTransform({ x: 0, y: 0, scale: 1 }); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mapData]);
+  }, [mapData, past, future]);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const scaleFactor = 1.1;
+    const delta = e.deltaY < 0 ? scaleFactor : 1 / scaleFactor;
+    const newScale = Math.min(Math.max(transform.scale * delta, 0.2), 10);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const newX = mouseX - (mouseX - transform.x) * delta;
+    const newY = mouseY - (mouseY - transform.y) * delta;
+
+    setTransform({ x: newX, y: newY, scale: newScale });
+  };
 
   // Auto-save to Local Storage
   useEffect(() => {
@@ -121,6 +179,16 @@ const Test: React.FC = () => {
     return { x: Number(svgP.x.toFixed(1)), y: Number(svgP.y.toFixed(1)) };
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (mode === 'view' && !draggedNode) {
+      setIsPanning(true);
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+    if (draggedNode && mode === 'view') {
+      dragStartStateRef.current = mapData;
+    }
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
     const coords = getSvgCoords(e);
     setMousePos(coords);
@@ -133,11 +201,22 @@ const Test: React.FC = () => {
           [draggedNode]: { ...prev.nodes[draggedNode], x: coords.x, y: coords.y }
         }
       }));
+    } else if (isPanning) {
+      const dx = e.clientX - lastMousePos.x;
+      const dy = e.clientY - lastMousePos.y;
+      setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+      setLastMousePos({ x: e.clientX, y: e.clientY });
     }
   };
 
   const handleMouseUp = () => {
+    if (draggedNode && dragStartStateRef.current) {
+      setPast(prev => [...prev.slice(-29), dragStartStateRef.current!]);
+      setFuture([]);
+    }
     setDraggedNode(null);
+    setIsPanning(false);
+    dragStartStateRef.current = null;
   };
 
   const generateNodeId = () => {
@@ -160,7 +239,13 @@ const Test: React.FC = () => {
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (mode === 'view') {
+      setSelectedNodeId(null);
+      return;
+    }
     if (mode !== 'add_path' && mode !== 'add_destination') return;
+    
+    takeSnapshot();
     const { x, y } = getSvgCoords(e);
     const newId = generateNodeId();
 
@@ -173,22 +258,16 @@ const Test: React.FC = () => {
         }
       }));
     } else {
-      const name = window.prompt('Enter destination name (e.g. "BW204"):');
-      if (!name || name.trim() === '') return;
-
-      const pic = window.prompt('Enter pic filename (leave empty if none):', '') || '';
-
+      // Prompt-free: Create node and select it immediately for sidebar editing
       setMapData(prev => ({
         ...prev,
         nodes: {
           ...prev.nodes,
           [newId]: { x, y, type: 'destination' }
-        },
-        destinations: {
-          ...prev.destinations,
-          [name.trim()]: { node: newId, pic: pic.trim() }
         }
       }));
+      setSelectedNodeId(newId);
+      setMode('view'); // Switch to view so they can edit immediately
     }
   };
 
@@ -221,6 +300,7 @@ const Test: React.FC = () => {
           );
 
           if (!edgeExists) {
+            takeSnapshot();
             setMapData(prev => ({
               ...prev,
               edges: [...prev.edges, { from: selectedNodeForEdge, to: nodeId }]
@@ -257,6 +337,7 @@ const Test: React.FC = () => {
     e.stopPropagation();
 
     if (mode === 'delete') {
+      takeSnapshot();
       setMapData(prev => ({
         ...prev,
         edges: prev.edges.filter((_, i) => i !== edgeIndex)
@@ -360,6 +441,7 @@ const Test: React.FC = () => {
   }, [isDirty]);
 
   const handleUpdateNode = (nodeId: string, updates: Partial<Node>) => {
+    takeSnapshot();
     setMapData(prev => ({
       ...prev,
       nodes: {
@@ -370,15 +452,14 @@ const Test: React.FC = () => {
   };
 
   const handleUpdateDestination = (nodeId: string, name: string, pic: string) => {
+    takeSnapshot();
     setMapData(prev => {
       const newDestinations = { ...prev.destinations };
-      // Remove old destination entry for this node
       for (const key in newDestinations) {
         if (newDestinations[key].node === nodeId) {
           delete newDestinations[key];
         }
       }
-      // Add new one
       if (name) {
         newDestinations[name] = { node: nodeId, pic };
       }
@@ -387,6 +468,7 @@ const Test: React.FC = () => {
   };
 
   const deleteNode = (nodeId: string) => {
+    takeSnapshot();
     setMapData(prev => {
       const newNodes = { ...prev.nodes };
       delete newNodes[nodeId];
@@ -442,6 +524,25 @@ const Test: React.FC = () => {
             <option value="five">Fifth OG</option>
           </select>
 
+          <div style={{ display: 'flex', gap: '8px', borderLeft: '1px solid #e5e7eb', paddingLeft: '16px', marginRight: '8px' }}>
+            <button 
+              onClick={undo} 
+              disabled={past.length === 0}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: past.length === 0 ? '#f9fafb' : 'white', color: past.length === 0 ? '#d1d5db' : '#374151', cursor: past.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
+              title="Undo (Ctrl+Z)"
+            >
+              ⟲ Undo
+            </button>
+            <button 
+              onClick={redo} 
+              disabled={future.length === 0}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: future.length === 0 ? '#f9fafb' : 'white', color: future.length === 0 ? '#d1d5db' : '#374151', cursor: future.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
+              title="Redo (Ctrl+Y)"
+            >
+              ⟳ Redo
+            </button>
+          </div>
+
           <button onClick={restoreOriginal} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white', color: '#374151', cursor: 'pointer', fontWeight: 500 }}>Restore</button>
           <button onClick={saveOnly} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', cursor: 'pointer', fontWeight: 600 }}>Export JSON</button>
         </div>
@@ -470,8 +571,20 @@ const Test: React.FC = () => {
           </div>
 
           {/* MAP CANVAS */}
-          <div style={{ position: 'relative', flex: 1, overflow: 'auto', background: '#f3f4f6' }}>
-            <div style={{ position: 'relative', width: 'max-content', margin: '20px' }}>
+          <div 
+            ref={containerRef}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#f3f4f6', cursor: isPanning ? 'grabbing' : (mode === 'view' && !draggedNode ? 'grab' : 'default') }}
+          >
+            <div style={{ 
+              position: 'relative', 
+              width: 'max-content', 
+              margin: '20px',
+              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+              transformOrigin: '0 0',
+              transition: isPanning ? 'none' : 'transform 0.1s ease-out'
+            }}>
               <img src={maps[selectedMap].svg} alt="Map" style={{ display: 'block', width: '1285px', height: '731px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
               <svg
                 ref={svgRef}
