@@ -37,11 +37,60 @@ const Test: React.FC = () => {
   const [mode, setMode] = useState<'view' | 'add_path' | 'add_destination' | 'add_edge' | 'delete'>('view');
   const [selectedNodeForEdge, setSelectedNodeForEdge] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five'>('4th');
   const lastSavedRef = useRef<string>('');
   const [isDirty, setIsDirty] = useState(false);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      switch (e.key.toLowerCase()) {
+        case 'v': setMode('view'); break;
+        case 'n': setMode('add_path'); break;
+        case 'e': setMode('add_edge'); break;
+        case 'd': setMode('delete'); break;
+        case 's': saveOnly(); break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mapData]);
+
+  const getSvgCoords = (e: React.MouseEvent | MouseEvent) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    const point = svgRef.current.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const svgCTM = svgRef.current.getScreenCTM();
+    if (!svgCTM) return { x: 0, y: 0 };
+    const svgP = point.matrixTransform(svgCTM.inverse());
+    return { x: Number(svgP.x.toFixed(1)), y: Number(svgP.y.toFixed(1)) };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const coords = getSvgCoords(e);
+    setMousePos(coords);
+
+    if (draggedNode && mode === 'view') {
+      setMapData(prev => ({
+        ...prev,
+        nodes: {
+          ...prev.nodes,
+          [draggedNode]: { ...prev.nodes[draggedNode], x: coords.x, y: coords.y }
+        }
+      }));
+    }
+  };
+
+  const handleMouseUp = () => {
+    setDraggedNode(null);
+  };
 
   const generateNodeId = () => {
     let maxNum = 0;
@@ -64,19 +113,8 @@ const Test: React.FC = () => {
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (mode !== 'add_path' && mode !== 'add_destination') return;
-    if (!svgRef.current) return;
-
-    const point = svgRef.current.createSVGPoint();
-    point.x = e.clientX;
-    point.y = e.clientY;
-    const svgCTM = svgRef.current.getScreenCTM();
-    if (!svgCTM) return;
-
-    const svgP = point.matrixTransform(svgCTM.inverse());
-
+    const { x, y } = getSvgCoords(e);
     const newId = generateNodeId();
-    const x = Number(svgP.x.toFixed(1));
-    const y = Number(svgP.y.toFixed(1));
 
     if (mode === 'add_path') {
       setMapData(prev => ({
@@ -197,7 +235,7 @@ const Test: React.FC = () => {
   };
 
   const maps: Record<string, { label: string; svg: string; data: any }> = {
-    '4th': { label: '4th Floor', svg: '/SIMS_MAP_.svg', data: initialData },
+    '4th': { label: '4th Floor', svg: '/SIMS_MAP_fourth_3200D_line.svg', data: initialData },
     'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
     'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData }
   };
@@ -302,6 +340,8 @@ const Test: React.FC = () => {
           <svg
             ref={svgRef}
             onClick={handleSvgClick}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             style={{
               position: 'absolute',
               top: 0,
@@ -311,6 +351,19 @@ const Test: React.FC = () => {
             }}
             viewBox="0 0 1285 731"
           >
+            {/* Edge Ghosting */}
+            {mode === 'add_edge' && selectedNodeForEdge && mapData.nodes[selectedNodeForEdge] && (
+              <line
+                x1={mapData.nodes[selectedNodeForEdge].x}
+                y1={mapData.nodes[selectedNodeForEdge].y}
+                x2={mousePos.x}
+                y2={mousePos.y}
+                stroke="rgba(60,120,255,0.3)"
+                strokeWidth={2}
+                strokeDasharray="4 2"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
 
             {mapData.edges.map((edge, index) => {
               const fromNode = mapData.nodes[edge.from];
@@ -342,14 +395,25 @@ const Test: React.FC = () => {
                     <circle
                       cx={node.x}
                       cy={node.y}
-                      r={isDest ? (hoveredNode === nodeId ? 6 : 4) : (hoveredNode === nodeId ? 4 : 2.5)}
+                      r={isDest ? (hoveredNode === nodeId ? 7 : 5) : (hoveredNode === nodeId ? 5 : 3.5)}
                       fill={isDest ? '#9c27b0' : '#4caf50'}
-                      stroke={selectedNodeForEdge === nodeId ? '#111827' : 'white'}
-                      strokeWidth={selectedNodeForEdge === nodeId ? 2 : 1}
+                      stroke={selectedNodeForEdge === nodeId || draggedNode === nodeId ? '#111827' : 'white'}
+                      strokeWidth={selectedNodeForEdge === nodeId || draggedNode === nodeId ? 2 : 1}
+                      onMouseDown={(e) => {
+                        if (mode === 'view') {
+                          e.stopPropagation();
+                          setDraggedNode(nodeId);
+                        }
+                      }}
                       onClick={(e) => handleNodeClick(e, nodeId)}
                       onMouseEnter={() => setHoveredNode(nodeId)}
                       onMouseLeave={() => setHoveredNode(null)}
-                      style={{ cursor: mode === 'delete' ? 'pointer' : mode === 'add_edge' ? 'crosshair' : 'default' }}
+                      style={{ 
+                        cursor: mode === 'delete' ? 'pointer' : 
+                               mode === 'add_edge' ? 'crosshair' : 
+                               mode === 'view' ? 'grab' : 'default',
+                        transition: 'r 0.1s ease-out'
+                      }}
                     />
 
                     {isDest && destName && (
