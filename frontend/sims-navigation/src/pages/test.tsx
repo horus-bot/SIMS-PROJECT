@@ -331,38 +331,6 @@ const Test: React.FC = () => {
     }
   };
 
-  const downloadJson = () => {
-    const dataStr = JSON.stringify(mapData, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-
-    const filename =
-      selectedMap === '4th'
-        ? 'graphData4th.json'
-        : selectedMap === 'first'
-        ? 'graphData_first.json'
-        : 'graphData_five.json';
-
-    link.download = filename;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
-
-    lastSavedRef.current = dataStr;
-    setIsDirty(false);
-  };
-
-  const saveOnly = () => {
-    downloadJson();
-  };
-
   const maps: Record<string, { label: string; svg: string; data: any }> = {
     '4th': { label: '4th Floor', svg: '/SIMS_MAP_fourth_3200D_line.svg', data: initialData },
     'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
@@ -474,7 +442,38 @@ const Test: React.FC = () => {
 
   const nodeCount = Object.keys(mapData.nodes).length;
   const edgeCount = mapData.edges.length;
-  const destCount = Object.keys(mapData.destinations).length;
+
+  const downloadJson = () => {
+    const dataStr = JSON.stringify(mapData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+
+    const filename =
+      selectedMap === '4th'
+        ? 'graphData4th.json'
+        : selectedMap === 'first'
+        ? 'graphData_first.json'
+        : 'graphData_five.json';
+
+    link.download = filename;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+
+    lastSavedRef.current = dataStr;
+    setIsDirty(false);
+  };
+
+  const saveOnly = () => {
+    downloadJson();
+  };
 
   const selectedNode = selectedNodeId ? mapData.nodes[selectedNodeId] : null;
   const selectedDestName = selectedNodeId ? getDestinationName(selectedNodeId) : null;
