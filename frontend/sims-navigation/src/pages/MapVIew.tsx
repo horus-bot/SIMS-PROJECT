@@ -146,7 +146,7 @@ const MapView = () => {
     if (!isNavActive) return;
     if (navState.turnType !== "straight" && navState.distToTurn < 10) {
       if ("vibrate" in navigator) {
-        navigator.vibrate([100, 50, 100]); // Short double pulse
+        // navigator.vibrate([100, 50, 100]); // Short double pulse disabled per user request
       }
     }
   }, [navState.turnType, navState.distToTurn, isNavActive]);
@@ -629,7 +629,7 @@ const MapView = () => {
 
       {/* Map Box: centered clipped container that only displays the map */}
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", pointerEvents: "none", zIndex: 1, touchAction: "none", userSelect: "none" }}>
-        <div style={{ width: "100%", maxWidth: "100%", height: "75vh", overflow: "hidden", pointerEvents: "auto", position: "relative", boxSizing: "border-box", touchAction: "none", userSelect: "none" }}>
+        <div style={{ width: "100%", maxWidth: "100%", height: "75vh", overflow: "hidden", pointerEvents: "auto", position: "relative", boxSizing: "border-box", touchAction: "none", userSelect: "none", padding: 10 }}>
             <div
             ref={viewportRef}
             style={{ position: "absolute", inset: 0, overflow: "hidden", background: "transparent", touchAction: "none" }}
@@ -639,8 +639,6 @@ const MapView = () => {
             onPointerLeave={handlePointerUp}
             onPointerCancel={handlePointerUp}
             onTouchStart={(e) => { e.preventDefault(); }}
-            onTouchMove={(e) => { e.preventDefault(); }}
-            onWheel={(e) => { e.preventDefault(); }}
           >
             <div ref={map3DRef} style={{ width: "100%", height: "100%", transformStyle: "preserve-3d" as const, willChange: "transform" }}>
               <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
@@ -660,17 +658,18 @@ const MapView = () => {
                   onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
                   style={{
                     position: "absolute", left: dest.x, top: dest.y,
-                      transform: `translate(-50%, -100%) scale(${(near ? 0.85 : 0.7) * labelScale})`,
+                      transform: `translate(-50%, -100%) scale(${0.7 * labelScale})`,
                       marginTop: -Math.round(8 * labelScale),
-                      background: near ? "#4285F4" : "#fff",
-                      color: near ? "#fff" : "#5F6368",
+                      background: "#FFFFFF",
+                      color: "#374151",
                       padding: `${Math.round(3 * labelScale)}px ${Math.round(6 * labelScale)}px`, borderRadius: Math.round(8 * labelScale),
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-                      fontSize: Math.max(9, Math.round((near ? 10 : 8) * labelScale)), fontWeight: 600,
+                      border: "1px solid #E5E7EB",
+                      boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
+                      fontSize: Math.max(9, Math.round(8 * labelScale)), fontWeight: 600,
                     pointerEvents: "auto", cursor: dest.pic ? "pointer" : "default",
                     zIndex: 20, whiteSpace: "nowrap",
                     transition: "all 0.3s cubic-bezier(.4,0,.2,1)",
-                      border: near ? "none" : "1px solid #DADCE0",
+                      
                     display: "flex", alignItems: "center", gap: 4,
                   }}
                 >
@@ -705,7 +704,7 @@ const MapView = () => {
           </div>
         </div>
       </div>
-
+  )
       {/* Floating UI */}
 
       {/* Top header removed per request */}
@@ -777,12 +776,15 @@ const MapView = () => {
         onStopNavigation={() => setIsNavActive(false)}
         onPrevStep={handlePrevStep}
         onNextStep={handleNextStep}
+        destName={rawDest || undefined}
+        totalRem={navState.totalRem}
+        currentSpeed={_currentSpeed}
       />
 
       {locationToConfirm && (
         <LocationConfirmCard
           room={locationToConfirm.name}
-          image={`/${locationToConfirm.pic}`}
+          image={`/${locationToConfirm?.pic}`}
           onConfirm={handleConfirmLocation}
           onReject={handleRejectLocation}
         />
@@ -809,10 +811,10 @@ const MapView = () => {
               position: "absolute", top: 10, right: 14,
               background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#5F6368",
             }}>{"\u2715"}</button>
-            <h3 style={{ margin: "0 0 12px", fontSize: 18, color: "#202124" }}>{selectedDestination.name}</h3>
+            <h3 style={{ margin: "0 0 12px", fontSize: 18, color: "#202124" }}>{selectedDestination?.name}</h3>
             <img
-              src={`/${selectedDestination.pic}`}
-              alt={selectedDestination.name}
+              src={`/${selectedDestination?.pic}`}
+              alt={selectedDestination?.name}
               style={{ maxWidth: "100%", maxHeight: "70vh", borderRadius: 12 }}
             />
           </div>

@@ -146,7 +146,7 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
         }
         
         lastStepTime.current = now;
-        if (window.navigator.vibrate) window.navigator.vibrate(40);
+        // if (window.navigator.vibrate) window.navigator.vibrate(40); // User requested no vibration
       }  // Added missing closing brace for the if statement
     };
 
