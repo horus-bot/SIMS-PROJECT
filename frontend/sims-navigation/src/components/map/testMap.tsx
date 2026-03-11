@@ -1,214 +1,328 @@
-import React, { useMemo } from "react";
-import testData from "../../data/test_1.json"; // Direct import for node coordinates
+import React, { useMemo, useState, useEffect } from "react";
+import testData from "../../data/test_1.json";
+
+/*
+|--------------------------------------------------------------------------
+| TestMapProps
+|--------------------------------------------------------------------------
+| Defines the data this component can receive from the parent.
+| This component is purely a renderer, so it only receives
+| navigation data and displays it visually on the map.
+|
+| routePath   → array of node IDs representing the planned navigation route
+| actualPath  → coordinates of the user's real movement (for tracking)
+| isDeviated  → if true, actual path is shown as a dashed warning line
+|--------------------------------------------------------------------------
+*/
 
 interface TestMapProps {
-  routePath?: string[]; // Array of node IDs representing the path
-  actualPath?: {x: number, y: number}[]; // Actual path taken
-  isDeviated?: boolean; // Whether deviated from route
-  isDarkMode?: boolean; // Dark mode toggle
+  routePath?: string[];
+  actualPath?: { x: number; y: number }[];
+  isDeviated?: boolean;
 }
 
-const TestMap: React.FC<TestMapProps> = ({ routePath = [], actualPath = [], isDeviated = false, isDarkMode = false }) => {
-  // Convert node IDs in routePath to coordinate points string for polyline
+/*
+|--------------------------------------------------------------------------
+| TestMap Component
+|--------------------------------------------------------------------------
+| Responsible for:
+| 1. Loading the base SVG floor map
+| 2. Creating a pixel-based canvas using SVG overlay
+| 3. Rendering the navigation route
+| 4. Rendering the actual user path
+| 5. Displaying start and destination markers
+|--------------------------------------------------------------------------
+*/
+
+const TestMap: React.FC<TestMapProps> = ({
+  routePath = [],
+  actualPath = [],
+  isDeviated = false
+}) => {
+
+  /*
+  |--------------------------------------------------------------------------
+  | Map Dimensions State
+  |--------------------------------------------------------------------------
+  | Stores the natural width and height of the SVG map.
+  | This ensures our overlay SVG uses the exact same coordinate space
+  | as the original map image.
+  |--------------------------------------------------------------------------
+  */
+
+  const [dimensions, setDimensions] = useState({
+    width: 0,
+    height: 0
+  });
+
+  /*
+  |--------------------------------------------------------------------------
+  | Load Map Image
+  |--------------------------------------------------------------------------
+  | We load the SVG once to read its natural pixel dimensions.
+  | This allows the overlay SVG to perfectly align with the map.
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    const img = new Image();
+
+    img.onload = () => {
+      setDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+    };
+
+    img.src = testData.meta.svg;
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Convert route node IDs → SVG polyline points
+  |--------------------------------------------------------------------------
+  | Example:
+  |
+  | routePath = ["node_001","node_002","node_003"]
+  |
+  | becomes:
+  |
+  | "x1,y1 x2,y2 x3,y3"
+  |
+  | which is the format SVG uses for drawing connected paths.
+  |--------------------------------------------------------------------------
+  */
+
   const polylinePoints = useMemo(() => {
     if (!routePath || routePath.length < 2) return "";
-    
-    // cast testData to access nodes safely
+
     const nodes = testData.nodes as Record<string, { x: number; y: number }>;
-    
+
     return routePath
-      .map(nodeId => {
+      .map((nodeId) => {
         const node = nodes[nodeId];
         return node ? `${node.x},${node.y}` : null;
       })
-      .filter(p => p !== null)
+      .filter((p) => p !== null)
       .join(" ");
   }, [routePath]);
 
-  // Convert actual path to polyline points
+  /*
+  |--------------------------------------------------------------------------
+  | Convert actual user path → SVG polyline points
+  |--------------------------------------------------------------------------
+  | This draws the real movement trail of the user.
+  | Used for deviation detection and breadcrumb navigation.
+  |--------------------------------------------------------------------------
+  */
+
   const actualPolylinePoints = useMemo(() => {
     if (!actualPath || actualPath.length < 2) return "";
-    return actualPath.map(p => `${p.x},${p.y}`).join(" ");
+
+    return actualPath.map((p) => `${p.x},${p.y}`).join(" ");
   }, [actualPath]);
 
-  // Dynamic Colors based on Dark Mode
+  /*
+  |--------------------------------------------------------------------------
+  | Color Configuration
+  |--------------------------------------------------------------------------
+  | Defines the visual styling of the map elements.
+  |--------------------------------------------------------------------------
+  */
+
   const colors = {
-    bg: isDarkMode ? "#0F172A" : "#ffffff",
-    pathMain: isDarkMode ? "#22D3EE" : "#3B82F6", // Cyan vs Blue
-    pathGlow: isDarkMode ? "#0891B2" : "#3B82F6",
-    pathStroke: isDarkMode ? "rgba(0,0,0,0.5)" : "white",
-    highlight: isDarkMode ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
-    actualPath: isDeviated ? "#EF4444" : (isDarkMode ? "#F472B6" : "#10B981"), // Pink in dark mode for contrast
-    shadow: isDarkMode ? "rgba(34, 211, 238, 0.4)" : "rgba(59, 130, 246, 0.25)"
+    pathMain: "#3B82F6",        // main navigation route
+    pathStroke: "white",        // outer stroke casing
+    highlight: "rgba(255,255,255,0.6)", // glossy highlight
+    actualPath: isDeviated ? "#EF4444" : "#10B981" // deviation warning
   };
 
   return (
-    <div style={{ 
-        position: "relative", 
-        width: "4101px", 
-        height: "3025px",
-        // Enhanced 3D Plate Effect
-        boxShadow: isDarkMode 
-            ? "0 30px 60px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05)"
-            : "0 30px 60px -12px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0,0,0,0.02)", 
-        background: colors.bg, 
-        borderRadius: '8px',
-        overflow: 'hidden',
-        transition: 'background 0.3s ease'
-    }}>
-      {/* 1. Base Map Image */}
+    <div
+      style={{
+        position: "relative",
+        width: dimensions.width ? `${dimensions.width}px` : "auto",
+        height: dimensions.height ? `${dimensions.height}px` : "auto",
+        background: "transparent",
+        overflow: "hidden"
+      }}
+    >
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Base Map Image                                                     */}
+      {/* ------------------------------------------------------------------ */}
+      {/* This renders the building floor plan.                              */}
+      {/* The SVG overlay will be placed directly on top of this image.      */}
+      {/* ------------------------------------------------------------------ */}
+
       <img
-        src="/2nd_FloorSwathiEdition.svg"
+        src={testData.meta.svg}
         alt="Indoor Map"
-        width={4101}
-        height={3025}
-        style={{ 
-            position: "absolute", 
-            inset: 0, 
-            pointerEvents: "none",
-            opacity: isDarkMode ? 0.6 : 0.9,
-            // "Blueprint" effect for Dark Mode
-            filter: isDarkMode ? "invert(1) grayscale(1) brightness(0.7) contrast(1.5) hue-rotate(180deg)" : "none",
-            mixBlendMode: isDarkMode ? 'lighten' : 'multiply', 
-            transition: 'all 0.3s ease'
+        width={dimensions.width || undefined}
+        height={dimensions.height || undefined}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none"
         }}
       />
 
-      {/* 2. SVG Overlay for Path */}
+      {/* ------------------------------------------------------------------ */}
+      {/* SVG Overlay Canvas                                                 */}
+      {/* ------------------------------------------------------------------ */}
+      {/* This is where all navigation visuals are drawn.                    */}
+      {/* Coordinates in the JSON map directly to pixels here.               */}
+      {/* ------------------------------------------------------------------ */}
+
       <svg
-        width={4101}
-        height={3025}
-        style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10 }}
+        width={dimensions.width || "100%"}
+        height={dimensions.height || "100%"}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 10
+        }}
       >
+
+        {/* ================================================================ */}
+        {/* SVG Definitions (Filters & Gradients)                           */}
+        {/* ================================================================ */}
+
         <defs>
-            {/* Soft Shadow for path */}
-            <filter id="pathShell" x="-20%" y="-20%" width="140%" height="140%">
-               <feDropShadow dx="0" dy="8" stdDeviation={isDarkMode ? "12" : "6"} floodColor={colors.pathGlow} floodOpacity={isDarkMode ? "0.6" : "0.25"} />
-            </filter>
-            
-            {/* Pin Gradient */}
-            <linearGradient id="pinGradient" x1="0" y1="0" x2="0" y2="1">
-               <stop offset="0%" stopColor="#EF4444" />
-               <stop offset="100%" stopColor="#B91C1C" />
-            </linearGradient>
-            
-            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-               <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="black" floodOpacity="0.3" />
-            </filter>
+
+          {/* Shadow effect used for path glow */}
+          <filter id="pathShadow" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow
+              dx="0"
+              dy="2"
+              stdDeviation="2"
+              floodColor="#3B82F6"
+              floodOpacity="0.12"
+            />
+          </filter>
+
+          {/* Destination pin gradient */}
+          <linearGradient id="pinGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#EF4444" />
+            <stop offset="100%" stopColor="#B91C1C" />
+          </linearGradient>
+
         </defs>
 
-        {/* Draw the connected path with "Glassy Tube" effect */}
-        {polylinePoints && (
-          <g filter="url(#pathShell)">
-             {/* 1. Casing / Shadow */}
-             <polyline
-                points={polylinePoints}
-                fill="none"
-                stroke={colors.pathStroke}
-                strokeWidth={isDarkMode ? "32" : "28"} 
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity="1.0"
-             />
-             
-             {/* 2. Main Color Body */}
-             <polyline
-                points={polylinePoints}
-                fill="none"
-                stroke={colors.pathMain}
-                strokeWidth="18"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-             />
+        {/* ================================================================ */}
+        {/* Planned Navigation Route                                         */}
+        {/* ================================================================ */}
 
-             {/* 3. Gloss/Highlight (Right side) */}
-             <polyline
-                points={polylinePoints}
-                fill="none"
-                stroke={colors.highlight}
-                strokeWidth={isDarkMode ? "4" : "6"}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                transform="translate(-3, -3)" // Offset to create specular look
-                opacity="0.8"
+        {polylinePoints && (
+          <g filter="url(#pathShadow)">
+
+            {/* Outer casing removed: rendering only the main colored route */}
+
+            {/* Main route line */}
+            <polyline
+              points={polylinePoints}
+              fill="none"
+              stroke={colors.pathMain}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Gloss highlight */}
+            <polyline
+              points={polylinePoints}
+              fill="none"
+              stroke={colors.highlight}
+              strokeWidth="6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              transform="translate(-3,-3)"
+              opacity="0.8"
             />
           </g>
         )}
 
-        {/* Actual Path (Breadcrumbs) - If tracking is active */}
+        {/* ================================================================ */}
+        {/* Actual User Path (Breadcrumb Trail)                              */}
+        {/* ================================================================ */}
+
         {actualPolylinePoints && (
-             <polyline
-                points={actualPolylinePoints}
-                fill="none"
-                stroke={colors.actualPath}
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={isDeviated ? "12, 12" : "0"}
-                opacity="0.8"
-             />
+          <polyline
+            points={actualPolylinePoints}
+            fill="none"
+            stroke={colors.actualPath}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={isDeviated ? "12,12" : "0"}
+            opacity="0.85"
+          />
         )}
 
-        {/* Draw Markers for start and end */}
-        {routePath.length > 0 && (
+        {/* ================================================================ */}
+        {/* Start and Destination Markers                                    */}
+        {/* ================================================================ */}
+
+        {routePath.length > 0 && dimensions.width > 0 && (
           <>
-            {/* Start Node: Pulsing Dot */}
-            <g transform={`translate(${(testData.nodes as any)[routePath[0]]?.x}, ${(testData.nodes as any)[routePath[0]]?.y})`}>
-                <circle r="24" fill="#22C55E" opacity="0.4">
-                    <animate attributeName="r" values="24;32;24" dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
-                </circle>
-                <circle r="14" fill="#22C55E" stroke="white" strokeWidth="3" style={{ filter: "url(#shadow)" }} />
+            {/* ---------------- Start Marker ---------------- */}
+
+            <g
+              transform={`translate(${
+                (testData.nodes as any)[routePath[0]]?.x
+              }, ${(testData.nodes as any)[routePath[0]]?.y})`}
+            >
+
+              {/* Pulsing circle animation */}
+              <circle r="24" fill="#22C55E" opacity="0.4">
+                <animate
+                  attributeName="r"
+                  values="24;32;24"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  attributeName="opacity"
+                  values="0.4;0;0.4"
+                  dur="2s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+
+              {/* Solid center */}
+              <circle r="14" fill="#22C55E" stroke="white" strokeWidth="3" />
             </g>
 
-            {/* End Node: Destination Pin */}
-            <g transform={`translate(${(testData.nodes as any)[routePath[routePath.length - 1]]?.x}, ${(testData.nodes as any)[routePath[routePath.length - 1]]?.y})`} style={{ filter: "url(#shadow)" }}>
-                 {/* Destination Label */}
-                 {(() => {
-                    const endNodeId = routePath[routePath.length - 1];
-                    const destLabel = Object.entries((testData as any).destination || {}).find(([_, val]) => (val as any).node === endNodeId)?.[0];
-                    if (!destLabel) return null;
+            {/* ---------------- Destination Pin ---------------- */}
 
-                    return (
-                        <g transform="translate(0, -50)">
-                            {/* Background Pill for readability */}
-                            <rect
-                                x="-60" y="-18"
-                                width="120" height="26"
-                                rx="12"
-                                fill={isDarkMode ? "#1E293B" : "white"}
-                                opacity="0.95"
-                                stroke="#EF4444"
-                                strokeWidth="2"
-                            />
-                            {/* Text Label */}
-                            <text
-                                textAnchor="middle"
-                                dominantBaseline="middle"
-                                fill={isDarkMode ? "white" : "#DC2626"}
-                                fontSize="16"
-                                fontWeight="bold"
-                                style={{ fontFamily: 'sans-serif' }}
-                            >
-                                {destLabel}
-                            </text>
-                        </g>
-                    );
-                })()}
+            <g
+              transform={`translate(${
+                (testData.nodes as any)[
+                  routePath[routePath.length - 1]
+                ]?.x
+              }, ${
+                (testData.nodes as any)[
+                  routePath[routePath.length - 1]
+                ]?.y
+              })`}
+            >
 
-                {/* Pin Shape */}
-                <path 
-                    d="M0 0 C -2 -2 -10 -12 -10 -22 C -10 -32 -6 -38 0 -38 C 6 -38 10 -32 10 -22 C 10 -12 2 -2 0 0" 
-                    fill="url(#pinGradient)" 
-                    stroke="white" 
-                    strokeWidth="2"
-                    transform="translate(0, -2)" // Nudge up so tip is at node
-                />
-                {/* Center dot in pin */}
-                <circle cx="0" cy="-24" r="4" fill="white" />
+              {/* Pin body */}
+              <path
+                d="M0 0 C -2 -2 -10 -12 -10 -22 C -10 -32 -6 -38 0 -38 C 6 -38 10 -32 10 -22 C 10 -12 2 -2 0 0"
+                fill="url(#pinGradient)"
+                stroke="white"
+                strokeWidth="2"
+                transform="translate(0,-2)"
+              />
+
+              {/* Pin center dot */}
+              <circle cx="0" cy="-24" r="4" fill="white" />
             </g>
           </>
         )}
+
       </svg>
     </div>
   );

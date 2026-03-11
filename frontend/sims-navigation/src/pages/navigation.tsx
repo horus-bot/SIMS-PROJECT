@@ -29,17 +29,18 @@ const NavigationPage = () => {
   const [search, setSearch] = useState("");
 
   // --- DATA (✅ updated for test_1.json "destination") ---
-  const rooms: Room[] = useMemo(() => {
-    const destMap = (floorData as any)?.destination as Record<string, string>;
-    if (!destMap) return [];
+const rooms: Room[] = useMemo(() => {
+  const destMap = (floorData as any)?.destinations;
+  if (!destMap) return [];
 
-    return Object.entries(destMap)
-      .map(([placeName, nearestNodeId]) => ({
-        id: nearestNodeId, // ✅ this is the node id used by map-view
-        name: placeName,   // ✅ human readable name
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, []);
+  return Object.entries(destMap)
+    .map(([placeName, info]: any) => ({
+      id: info.node,     // node id
+      name: placeName,   // room name
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+}, []);
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((r) =>

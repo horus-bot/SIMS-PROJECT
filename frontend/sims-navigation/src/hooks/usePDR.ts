@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import testData from "../data/test_1.json";
 import { Kalman2D } from "../utils/kalman2d";
 
-const PIXELS_PER_METER = 49; 
+const PIXELS_PER_METER = 12.2; 
 const STRIDE_METERS = 0.6; // Reduced to limit speed to ~1m/s
 // const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER;
 const SENSITIVITY = 0.9; 

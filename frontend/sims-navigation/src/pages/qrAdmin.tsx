@@ -20,10 +20,10 @@ const QRGenerator = () => {
 
   // ---- ROOMS ----
   const rooms: Room[] = useMemo(() => {
-    if (!floorData?.destination) return [];
-    return Object.entries(floorData.destination).map(([id, data]: any) => ({
+    if (!floorData?.destinations) return [];
+    return Object.entries(floorData.destinations).map(([id]) => ({
       id,
-      name: data.name || data.label || id,
+      name: id, // Use the key as the name
     }));
   }, []);
 
