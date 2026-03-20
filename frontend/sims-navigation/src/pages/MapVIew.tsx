@@ -1,4 +1,4 @@
-﻿import {
+import {
   useMemo,
   useState,
   useEffect,
@@ -16,6 +16,7 @@ import MapControls from "../components/map-view/MapControls";
 import NavigationMenu from "../components/map-view/NavigationMenu";
 import LocationConfirmCard from "../components/map-view/LocationConfirmCard";
 import TurnConfirmCard from "../components/map-view/TurnConfirmCard";
+import QRScanner from "../components/QRScanner";
 
 // Types
 interface DestinationData { node: string; pic: string }
@@ -23,6 +24,7 @@ interface TestData {
   meta: { building: string; floor: string; floorName: string; svg: string };
   nodes: Record<string, { x: number; y: number; type: string }>;
   destinations: Record<string, DestinationData>;
+  edges: any;
 }
 type NodeType = { x: number; y: number; type: string };
 
@@ -65,7 +67,7 @@ const MapView = () => {
 
   const routePath = useMemo(() => {
     if (!originId || !destId) return [];
-    return findShortestPath(originId, destId, nodeMap);
+    return findShortestPath(originId, destId, nodeMap, typedTestData.edges);
   }, [originId, destId, nodeMap]);
 
   const routePoints = useMemo(() => routePath.map((id) => nodeMap[id]).filter(Boolean), [routePath, nodeMap]);
@@ -80,43 +82,12 @@ const MapView = () => {
   const [locationToConfirm, setLocationToConfirm] = useState<{ name: string; pic: string } | null>(null);
   const shownDestinations = useRef<Set<string>>(new Set());
   const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
+  const [isRecalibrating, setIsRecalibrating] = useState(false);
 
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
 
   const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
-
-  const handleNextStep = () => {
-    if (!routePath.length) return;
-    const next = Math.min(stepIndex + 1, routePath.length - 1);
-    setStepIndex(next);
-    const n = nodeMap[routePath[next]];
-    if (n) forceSetPos(n.x, n.y);
-  };
-  const handlePrevStep = () => {
-    if (!routePath.length) return;
-    const prev = Math.max(stepIndex - 1, 0);
-    setStepIndex(prev);
-    const n = nodeMap[routePath[prev]];
-    if (n) forceSetPos(n.x, n.y);
-  };
-
-  const turnNodes = useMemo(() => {
-    const turns: string[] = [];
-    if (routePath.length < 3) return turns;
-    for (let i = 1; i < routePath.length - 1; i++) {
-      const prev = nodeMap[routePath[i - 1]];
-      const curr = nodeMap[routePath[i]];
-      const next = nodeMap[routePath[i + 1]];
-      if (!prev || !curr || !next) continue;
-      const a1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
-      const a2 = Math.atan2(next.y - curr.y, next.x - curr.x);
-      let diff = Math.abs(a1 - a2);
-      if (diff > Math.PI) diff = 2 * Math.PI - diff;
-      if (diff > 0.6) turns.push(routePath[i]);
-    }
-    return turns;
-  }, [routePath, nodeMap]);
 
   const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, routePath), [rawPos, routePath]);
   const snappedPos = { x: snapResult.x, y: snapResult.y };
@@ -156,6 +127,72 @@ const MapView = () => {
     const PX_PER_M = 12.2;
     return { turnType, distToTurn: Math.max(0, distToTurn / PX_PER_M), totalRem: Math.max(0, totalRem / PX_PER_M) };
   }, [snappedPos, routePath, nodeMap]);
+
+  const progress = useMemo(() => {
+    if (!routePath.length || !snappedPos) return 0;
+    // Calculate progress based on remaining distance vs total distance
+    const PX_PER_M = 12.2;
+    const totalDist = routePoints.reduce((acc, p, i) => {
+      if (i === 0) return 0;
+      const prev = routePoints[i - 1];
+      return acc + Math.hypot(p.x - prev.x, p.y - prev.y);
+    }, 0);
+    const remDist = navState.totalRem * PX_PER_M;
+    return Math.min(100, Math.max(0, 100 - (remDist / totalDist) * 100));
+  }, [navState.totalRem, routePath, snappedPos, routePoints]);
+
+  // Haptic Feedback for turns
+  useEffect(() => {
+    if (!isNavActive) return;
+    if (navState.turnType !== "straight" && navState.distToTurn < 10) {
+      if ("vibrate" in navigator) {
+        navigator.vibrate([100, 50, 100]); // Short double pulse
+      }
+    }
+  }, [navState.turnType, navState.distToTurn, isNavActive]);
+
+  const handleQrRecalibrate = (result: string) => {
+    // Assuming result is a node ID or a room name that exists in nodeMap
+    const targetNodeId = destinations[result] || result;
+    const targetNode = nodeMap[targetNodeId];
+    if (targetNode) {
+      forceSetPos(targetNode.x, targetNode.y);
+      setIsRecalibrating(false);
+      // Optional: show a small toast "Position Reset"
+    }
+  };
+
+  const handleNextStep = () => {
+    if (!routePath.length) return;
+    const next = Math.min(stepIndex + 1, routePath.length - 1);
+    setStepIndex(next);
+    const n = nodeMap[routePath[next]];
+    if (n) forceSetPos(n.x, n.y);
+  };
+  const handlePrevStep = () => {
+    if (!routePath.length) return;
+    const prev = Math.max(stepIndex - 1, 0);
+    setStepIndex(prev);
+    const n = nodeMap[routePath[prev]];
+    if (n) forceSetPos(n.x, n.y);
+  };
+
+  const turnNodes = useMemo(() => {
+    const turns: string[] = [];
+    if (routePath.length < 3) return turns;
+    for (let i = 1; i < routePath.length - 1; i++) {
+      const prev = nodeMap[routePath[i - 1]];
+      const curr = nodeMap[routePath[i]];
+      const next = nodeMap[routePath[i + 1]];
+      if (!prev || !curr || !next) continue;
+      const a1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+      const a2 = Math.atan2(next.y - curr.y, next.x - curr.x);
+      let diff = Math.abs(a1 - a2);
+      if (diff > Math.PI) diff = 2 * Math.PI - diff;
+      if (diff > 0.6) turns.push(routePath[i]);
+    }
+    return turns;
+  }, [routePath, nodeMap]);
 
   const lastSpokenInstruction = useRef<string | null>(null);
   useEffect(() => {
@@ -324,38 +361,6 @@ const MapView = () => {
     });
   }, [snappedPos, autoFollow]);
 
-  // Keep the user's pointer (snapped position) inside the viewport 'safe box'
-  // This nudges the camera if the pointer approaches the viewport edges.
-  useEffect(() => {
-    if (!viewportRef.current || !cameraLayerRef.current) return;
-    // do not fight the user's active gestures
-    if (pointers.current.size > 0) return;
-
-    const vp = viewportRef.current;
-    const { zoom, x: curX, y: curY } = camState.current;
-    const screenX = snappedPos.x * zoom + curX;
-    const screenY = snappedPos.y * zoom + curY;
-
-    const marginX = vp.clientWidth * 0.20; // 20% horizontal safe margin
-    const marginY = vp.clientHeight * 0.20; // 20% vertical safe margin
-
-    let targetX = curX;
-    let targetY = curY;
-    let moved = false;
-
-    if (screenX < marginX) { targetX = curX + (marginX - screenX); moved = true; }
-    else if (screenX > vp.clientWidth - marginX) { targetX = curX - (screenX - (vp.clientWidth - marginX)); moved = true; }
-
-    if (screenY < marginY) { targetY = curY + (marginY - screenY); moved = true; }
-    else if (screenY > vp.clientHeight - marginY) { targetY = curY - (screenY - (vp.clientHeight - marginY)); moved = true; }
-
-    if (moved) {
-      // Keep pointer comfortably inside a 20% safe margin when nudging
-      const c = clampCamera(targetX, targetY, camState.current.zoom, snappedPos, 0.20);
-      gsap.to(cameraLayerRef.current, { x: c.x, y: c.y, duration: 0.45, ease: "power3.out", onComplete: () => { camState.current.x = c.x; camState.current.y = c.y; } });
-    }
-  }, [snappedPos]);
-
   // Clamp camera to map bounds and optionally ensure a focus point (e.g. snappedPos)
   // remains inside a viewport margin. This guarantees the user's pointer stays
   // visible during panning and zooming gestures.
@@ -432,12 +437,44 @@ const MapView = () => {
       if (finalScreenX < pad) rx = Math.min(maxX, Math.max(minX, rx + (pad - finalScreenX)));
       else if (finalScreenX > vpW - pad) rx = Math.min(maxX, Math.max(minX, rx - (finalScreenX - (vpW - pad))));
 
-      if (finalScreenY < pad) ry = Math.min(maxY, Math.max(minY, ry + (pad - finalScreenY)));
-      else if (finalScreenY > vpH - pad) ry = Math.min(maxY, Math.max(minY, ry - (finalScreenY - (vpH - pad))));
+      if (finalScreenY < pad) ry = Math.min(maxY, ry + (pad - finalScreenY));
+      else if (finalScreenY > vpH - pad) ry = Math.min(maxY, ry - (finalScreenY - (vpH - pad)));
     }
 
     return { x: rx, y: ry, z };
   };
+
+  // Keep the user's pointer (snapped position) inside the viewport 'safe box'
+  // This nudges the camera if the pointer approaches the viewport edges.
+  useEffect(() => {
+    if (!viewportRef.current || !cameraLayerRef.current) return;
+    // do not fight the user's active gestures
+    if (pointers.current.size > 0) return;
+
+    const vp = viewportRef.current;
+    const { zoom, x: curX, y: curY } = camState.current;
+    const screenX = snappedPos.x * zoom + curX;
+    const screenY = snappedPos.y * zoom + curY;
+
+    const marginX = vp.clientWidth * 0.20; // 20% horizontal safe margin
+    const marginY = vp.clientHeight * 0.20; // 20% vertical safe margin
+
+    let targetX = curX;
+    let targetY = curY;
+    let moved = false;
+
+    if (screenX < marginX) { targetX = curX + (marginX - screenX); moved = true; }
+    else if (screenX > vp.clientWidth - marginX) { targetX = curX - (screenX - (vp.clientWidth - marginX)); moved = true; }
+
+    if (screenY < marginY) { targetY = curY + (marginY - screenY); moved = true; }
+    else if (screenY > vp.clientHeight - marginY) { targetY = curY - (screenY - (vp.clientHeight - marginY)); moved = true; }
+
+    if (moved) {
+      // Keep pointer comfortably inside a 20% safe margin when nudging
+      const c = clampCamera(targetX, targetY, camState.current.zoom, snappedPos, 0.20);
+      gsap.to(cameraLayerRef.current, { x: c.x, y: c.y, duration: 0.45, ease: "power3.out", onComplete: () => { camState.current.x = c.x; camState.current.y = c.y; } });
+    }
+  }, [snappedPos]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -512,6 +549,17 @@ const MapView = () => {
     gsap.to(map3DRef.current, { rotateZ: 0, rotateX: FIXED_PITCH, duration: 0.8, ease: "power2.inOut" });
   };
 
+  // Dynamic Tilt based on speed
+  useEffect(() => {
+    if (!map3DRef.current || !isNavActive) return;
+    const targetPitch = _currentSpeed > 0.2 ? 40 : 0; // Tilt 40deg when walking
+    gsap.to(map3DRef.current, { 
+      rotateX: targetPitch, 
+      duration: 1.5, 
+      ease: "power2.inOut" 
+    });
+  }, [_currentSpeed, isNavActive]);
+
   const handleZoom = (dir: "in" | "out") => {
     setAutoFollow(false);
     const { zoom, x, y } = camState.current;
@@ -527,7 +575,57 @@ const MapView = () => {
   if (!originId || !destId) return <div style={{ padding: 20, color: "#374151" }}>Invalid Route</div>;
 
   return (
-    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", overflow: "hidden", background: "transparent", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", overflow: "hidden", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+      {/* Trip Progress Bar */}
+      {isNavActive && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, background: "rgba(0,0,0,0.05)", zIndex: 1000 }}>
+          <div style={{ 
+            height: "100%", 
+            width: `${progress}%`, 
+            background: "linear-gradient(90deg, #4285F4, #34A853)", 
+            transition: "width 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+            boxShadow: "0 0 10px rgba(66,133,244,0.5)"
+          }} />
+        </div>
+      )}
+
+      {/* QR Recalibration Floating Button */}
+      <button 
+        onClick={() => setIsRecalibrating(true)}
+        style={{
+          position: "absolute",
+          right: 20,
+          top: isNavActive && navState.turnType !== "straight" ? 160 : 80,
+          width: 50,
+          height: 50,
+          borderRadius: "50%",
+          background: "white",
+          border: "none",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 500,
+          cursor: "pointer",
+          transition: "transform 0.2s"
+        }}
+        onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.9)"}
+        onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+      </button>
+
+      {/* Recalibration Scanner */}
+      {isRecalibrating && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2000 }}>
+          <QRScanner 
+            onScan={handleQrRecalibrate} 
+            onError={(err) => console.error(err)} 
+            onClose={() => setIsRecalibrating(false)} 
+          />
+        </div>
+      )}
 
       {/* Map Box: centered clipped container that only displays the map */}
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", pointerEvents: "none", zIndex: 1, touchAction: "none", userSelect: "none" }}>

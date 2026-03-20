@@ -1,17 +1,41 @@
-import testData from "../data/test_1.json";
-
-interface Graph {
-  [key: string]: { node: string; weight: number }[];
+interface Node {
+  x: number;
+  y: number;
+  type: string;
 }
 
+interface Edge {
+  from: string;
+  to: string;
+}
+
+interface Neighbor {
+  node: string;
+  weight: number;
+}
+
+type Graph = Record<string, Neighbor[]>;
+
+/**
+ * Finds the shortest path between two nodes using Dijkstra's algorithm.
+ * 
+ * @param startNodeId - The ID of the starting node.
+ * @param endNodeId - The ID of the target node.
+ * @param nodes - A map of node IDs to their coordinates and types.
+ * @param edges - An array of edges connecting the nodes.
+ * @returns An array of node IDs representing the shortest path.
+ */
 export const findShortestPath = (
-startNodeId: string, endNodeId: string, _nodeMap: Record<string, { x: number; y: number; type: string; }>): string[] => {
-  const nodes = testData.nodes as Record<string, { x: number; y: number; type: string }>;
-  const edges = testData.edges as { from: string; to: string }[];
+  startNodeId: string, 
+  endNodeId: string, 
+  nodes: Record<string, Node>,
+  edges: Edge[]
+): string[] => {
+  if (!nodes[startNodeId] || !nodes[endNodeId]) return [];
 
   const graph: Graph = {};
 
-  // ✅ build graph (undirected) with computed weights
+  // Build undirected graph with distance weights
   edges.forEach((edge) => {
     const fromNode = nodes[edge.from];
     const toNode = nodes[edge.to];
@@ -40,10 +64,10 @@ startNodeId: string, endNodeId: string, _nodeMap: Record<string, { x: number; y:
   }
 
   while (queue.length > 0) {
-    // Basic priority queue
+    // Sort queue by distance (basic priority queue behavior)
     queue.sort((a, b) => distances[a] - distances[b]);
     const currentNodeId = queue.shift();
-    if (!currentNodeId) break;
+    if (!currentNodeId || distances[currentNodeId] === Infinity) break;
 
     if (currentNodeId === endNodeId) break;
 
@@ -58,10 +82,9 @@ startNodeId: string, endNodeId: string, _nodeMap: Record<string, { x: number; y:
     }
   }
 
-  // ✅ no path
+  // Reconstruct path
   if (distances[endNodeId] === Infinity) return [];
 
-  // ✅ reconstruct path nodes
   const pathIds: string[] = [];
   let u: string | null = endNodeId;
 
