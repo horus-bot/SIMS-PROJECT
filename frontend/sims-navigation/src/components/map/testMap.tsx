@@ -77,6 +77,22 @@ const TestMap: React.FC<TestMapProps> = ({
     img.src = testData.meta.svg;
   }, []);
 
+  // Load SVG markup so we can inline and recolor elements to match theme
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(testData.meta.svg)
+      .then((r) => r.text())
+      .then((text) => {
+        if (cancelled) return;
+        setSvgMarkup(text);
+      })
+      .catch(() => {
+        setSvgMarkup(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   /*
   |--------------------------------------------------------------------------
   | Convert route node IDs → SVG polyline points
@@ -155,17 +171,30 @@ const TestMap: React.FC<TestMapProps> = ({
       {/* The SVG overlay will be placed directly on top of this image.      */}
       {/* ------------------------------------------------------------------ */}
 
-      <img
-        src={testData.meta.svg}
-        alt="Indoor Map"
-        width={dimensions.width || undefined}
-        height={dimensions.height || undefined}
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none"
-        }}
-      />
+      {svgMarkup ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            filter: "drop-shadow(0px 12px 32px rgba(0,0,0,0.12)) drop-shadow(0px 4px 8px rgba(0,0,0,0.06))",
+            transition: "all 0.3s ease"
+          }}
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+      ) : (
+        <img
+          src={testData.meta.svg}
+          alt="Indoor Map"
+          width={dimensions.width || undefined}
+          height={dimensions.height || undefined}
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none"
+          }}
+        />
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* SVG Overlay Canvas                                                 */}
