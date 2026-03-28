@@ -47,7 +47,8 @@ const Test: React.FC = () => {
     return { nodes: raw.nodes, edges: raw.edges, destinations };
   });
 
-  const [mode, setMode] = useState<'view' | 'add_path' | 'add_destination' | 'add_edge' | 'delete' | 'simulate'>('view');
+  const [mode, setMode] = useState<'view' | 'add_path' | 'add_destination' | 'add_edge' | 'add_line' | 'delete' | 'simulate'>('view');
+  const [lineStartPos, setLineStartPos] = useState<{ x: number, y: number, id: string } | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeForEdge, setSelectedNodeForEdge] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
@@ -124,6 +125,7 @@ const Test: React.FC = () => {
         case 'v': setMode('view'); break;
         case 'n': setMode('add_path'); break;
         case 'e': setMode('add_edge'); break;
+        case 'l': setMode('add_line'); break;
         case 'd': setMode('delete'); break;
         case 't': setMode('simulate'); break;
         case 's': saveOnly(); break;
@@ -133,6 +135,12 @@ const Test: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mapData, past, future]);
+
+  useEffect(() => {
+    if (mode !== 'add_line') {
+      setLineStartPos(null);
+    }
+  }, [mode]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -267,11 +275,54 @@ const Test: React.FC = () => {
       setSelectedNodeId(null);
       return;
     }
-    if (mode !== 'add_path' && mode !== 'add_destination') return;
+    if (mode !== 'add_path' && mode !== 'add_destination' && mode !== 'add_line') return;
     
     takeSnapshot();
     const { x, y } = getSvgCoords(e);
     const newId = generateNodeId();
+
+    if (mode === 'add_line') {
+      const pxSpacing = 40; // Generate a dot every 40 pixels
+      let currentNodes = { ...mapData.nodes };
+      let currentEdges = [ ...mapData.edges ];
+
+      if (!lineStartPos) {
+        currentNodes[newId] = { x, y, type: 'path' };
+        setMapData(prev => ({ ...prev, nodes: currentNodes }));
+        setLineStartPos({ x, y, id: newId });
+      } else {
+        const dist = Math.hypot(x - lineStartPos.x, y - lineStartPos.y);
+        const steps = Math.floor(dist / pxSpacing);
+        
+        let prevId = lineStartPos.id;
+        let maxNum = 0;
+        
+        Object.keys(currentNodes).forEach(idArg => {
+          const match = idArg.match(/^node_(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        });
+
+        for (let i = 1; i <= steps; i++) {
+          const ratio = i / steps;
+          const currX = Number((lineStartPos.x + ratio * (x - lineStartPos.x)).toFixed(1));
+          const currY = Number((lineStartPos.y + ratio * (y - lineStartPos.y)).toFixed(1));
+          
+          maxNum++;
+          const generatedId = 'node_' + String(maxNum).padStart(3, '0');
+          currentNodes[generatedId] = { x: currX, y: currY, type: 'path' };
+          
+          currentEdges.push({ from: prevId, to: generatedId });
+          prevId = generatedId;
+        }
+
+        setMapData(prev => ({ ...prev, nodes: currentNodes, edges: currentEdges }));
+        setLineStartPos({ x, y, id: prevId }); // Ready for continuous drawing
+      }
+      return;
+    }
 
     if (mode === 'add_path') {
       setMapData(prev => ({
@@ -310,6 +361,55 @@ const Test: React.FC = () => {
           return { ...prev, end: nodeId };
         }
       });
+    }
+
+    else if (mode === 'add_line') {
+      takeSnapshot();
+      if (!lineStartPos) {
+        setLineStartPos({ x: mapData.nodes[nodeId].x, y: mapData.nodes[nodeId].y, id: nodeId });
+      } else {
+        const targetNode = mapData.nodes[nodeId];
+        const dist = Math.hypot(targetNode.x - lineStartPos.x, targetNode.y - lineStartPos.y);
+        const pxSpacing = 40;
+        const steps = Math.floor(dist / pxSpacing);
+        
+        let currentNodes = { ...mapData.nodes };
+        let currentEdges = [ ...mapData.edges ];
+        let prevId = lineStartPos.id;
+        
+        let maxNum = 0;
+        Object.keys(currentNodes).forEach(idArg => {
+          const match = idArg.match(/^node_(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        });
+        
+        for (let i = 1; i < steps; i++) {
+          const ratio = i / steps;
+          const currX = Number((lineStartPos.x + ratio * (targetNode.x - lineStartPos.x)).toFixed(1));
+          const currY = Number((lineStartPos.y + ratio * (targetNode.y - lineStartPos.y)).toFixed(1));
+          
+          maxNum++;
+          const generatedId = 'node_' + String(maxNum).padStart(3, '0');
+          currentNodes[generatedId] = { x: currX, y: currY, type: 'path' };
+          
+          currentEdges.push({ from: prevId, to: generatedId });
+          prevId = generatedId;
+        }
+        
+        // Final edge link connecting to the specifically clicked node
+        const edgeExists = currentEdges.some(
+          edge => (edge.from === prevId && edge.to === nodeId) || (edge.from === nodeId && edge.to === prevId)
+        );
+        if (!edgeExists && prevId !== nodeId) {
+          currentEdges.push({ from: prevId, to: nodeId });
+        }
+        
+        setMapData(prev => ({ ...prev, nodes: currentNodes, edges: currentEdges }));
+        setLineStartPos({ x: targetNode.x, y: targetNode.y, id: nodeId });
+      }
     }
 
     else if (mode === 'add_edge') {
@@ -476,7 +576,13 @@ const Test: React.FC = () => {
   const edgeCount = mapData.edges.length;
 
   const downloadJson = () => {
-    const dataStr = JSON.stringify(mapData, null, 2);
+    // Merge back the original meta details implicitly expected by MapView graph data!
+    const exportData = {
+      meta: maps[selectedMap].data.meta || { building: "SIMS", floor: selectedMap, svg: maps[selectedMap].svg },
+      ...mapData
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
 
     const url = URL.createObjectURL(blob);
@@ -581,12 +687,14 @@ const Test: React.FC = () => {
             <button onClick={() => setMode('view')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'view' ? '#111827' : 'white', color: mode === 'view' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>View (V)</button>
             <button onClick={() => setMode('add_path')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_path' ? '#111827' : 'white', color: mode === 'add_path' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Node (N)</button>
             <button onClick={() => setMode('add_edge')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_edge' ? '#111827' : 'white', color: mode === 'add_edge' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Edge (E)</button>
+            <button onClick={() => setMode('add_line')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_line' ? '#111827' : 'white', color: mode === 'add_line' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Draw Line (L)</button>
             <button onClick={() => setMode('add_destination')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_destination' ? '#111827' : 'white', color: mode === 'add_destination' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Dest</button>
             <button onClick={() => setMode('simulate')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'simulate' ? '#f59e0b' : 'white', color: mode === 'simulate' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Test Path (T)</button>
             <button onClick={() => setMode('delete')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'delete' ? '#ef4444' : 'white', color: mode === 'delete' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Delete (D)</button>
 
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#6b7280', fontSize: '13px' }}>
               {mode === 'add_edge' && selectedNodeForEdge && <span>Connecting <code>{selectedNodeForEdge}</code>...</span>}
+              {mode === 'add_line' && <span>{lineStartPos ? `Click somewhere to draw line` : `Select start point`}</span>}
               {mode === 'simulate' && (
                 <span>{simNodes.start ? `From ${simNodes.start}` : 'Select start'} {simNodes.end ? `to ${simNodes.end}` : simNodes.start ? '• Select end' : ''}</span>
               )}
@@ -629,9 +737,14 @@ const Test: React.FC = () => {
                   </g>
                 )}
 
-                {/* Ghost Line */}
-                {mode === 'add_edge' && selectedNodeForEdge && mapData.nodes[selectedNodeForEdge] && (
-                  <line x1={mapData.nodes[selectedNodeForEdge].x} y1={mapData.nodes[selectedNodeForEdge].y} x2={mousePos.x} y2={mousePos.y} stroke="#2563eb" strokeWidth={2} strokeDasharray="5 3" opacity={0.5} />
+                {/* Ghost Line */ }
+                {((mode === 'add_edge' && selectedNodeForEdge && mapData.nodes[selectedNodeForEdge]) || (mode === 'add_line' && lineStartPos)) && (
+                  <line 
+                    x1={mode === 'add_edge' ? mapData.nodes[selectedNodeForEdge!].x : lineStartPos!.x} 
+                    y1={mode === 'add_edge' ? mapData.nodes[selectedNodeForEdge!].y : lineStartPos!.y} 
+                    x2={mousePos.x} y2={mousePos.y} 
+                    stroke="#2563eb" strokeWidth={2} strokeDasharray="5 3" opacity={0.5} 
+                  />
                 )}
 
                 {/* Edges */}
