@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import initialData from '../data/graphData4th.json';
 import templateData from '../data/template.json';
+import firstfloorData from '../data/graphData_firstfloor.json';
 import { findShortestPath } from '../utils/pathfinding';
 
 type NodeType = 'path' | 'destination';
@@ -28,6 +29,15 @@ interface MapData {
 }
 
 const Test: React.FC = () => {
+  const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five' | 'firstfloor'>('4th');
+
+  const maps: Record<string, { label: string; svg: string; data: any }> = {
+    '4th': { label: '4th Floor', svg: '/SIMS_MAP_fourth_3200D_line.svg', data: initialData },
+    'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
+    'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData },
+    'firstfloor': { label: 'First Floor', svg: '/firstfloor.svg', data: firstfloorData }
+  };
+
   const [mapData, setMapData] = useState<MapData>(() => {
     const raw = initialData as any;
     const destinations: Record<string, Destination> =
@@ -47,13 +57,22 @@ const Test: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
 
-  const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five'>('4th');
   const lastSavedRef = useRef<string>('');
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'synced'>('synced');
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const [dimensions, setDimensions] = useState({ width: 1285, height: 731 });
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.src = maps[selectedMap].svg;
+  }, [selectedMap, maps]);
 
   const [past, setPast] = useState<MapData[]>([]);
   const [future, setFuture] = useState<MapData[]>([]);
@@ -113,20 +132,37 @@ const Test: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [mapData, past, future]);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    const scaleFactor = 1.1;
-    const delta = e.deltaY < 0 ? scaleFactor : 1 / scaleFactor;
-    const newScale = Math.min(Math.max(transform.scale * delta, 0.2), 10);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const handleWheelNative = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      } else {
+        // Stop bubbling so the rest of the page isn't scrolled if not intended
+        e.preventDefault();
+      }
+      
+      const scaleFactor = 1.1;
+      const delta = e.deltaY < 0 ? scaleFactor : 1 / scaleFactor;
+      
+      setTransform(prev => {
+        const newScale = Math.min(Math.max(prev.scale * delta, 0.2), 10);
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-    const newX = mouseX - (mouseX - transform.x) * delta;
-    const newY = mouseY - (mouseY - transform.y) * delta;
+        const newX = mouseX - (mouseX - prev.x) * delta;
+        const newY = mouseY - (mouseY - prev.y) * delta;
 
-    setTransform({ x: newX, y: newY, scale: newScale });
-  };
+        return { x: newX, y: newY, scale: newScale };
+      });
+    };
+
+    container.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheelNative);
+  }, []);
 
   // Auto-save to Local Storage
   useEffect(() => {
@@ -331,12 +367,6 @@ const Test: React.FC = () => {
     }
   };
 
-  const maps: Record<string, { label: string; svg: string; data: any }> = {
-    '4th': { label: '4th Floor', svg: '/SIMS_MAP_fourth_3200D_line.svg', data: initialData },
-    'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
-    'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData }
-  };
-
   useEffect(() => {
     const curr = JSON.stringify(mapData);
     setIsDirty(curr !== lastSavedRef.current);
@@ -457,7 +487,9 @@ const Test: React.FC = () => {
         ? 'graphData4th.json'
         : selectedMap === 'first'
         ? 'graphData_first.json'
-        : 'graphData_five.json';
+        : selectedMap === 'five'
+        ? 'graphData_five.json'
+        : 'graphData_firstfloor.json';
 
     link.download = filename;
 
@@ -507,6 +539,7 @@ const Test: React.FC = () => {
             <option value="4th">4th Floor</option>
             <option value="first">First OG</option>
             <option value="five">Fifth OG</option>
+            <option value="firstfloor">First Floor</option>
           </select>
 
           <div style={{ display: 'flex', gap: '8px', borderLeft: '1px solid #e5e7eb', paddingLeft: '16px', marginRight: '8px' }}>
@@ -521,7 +554,7 @@ const Test: React.FC = () => {
             <button 
               onClick={redo} 
               disabled={future.length === 0}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: future.length === 0 ? '#f9fafb' : 'white', color: future.length === 0 ? '#d1d5db' : '#374151', cursor: future.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: future.length === 0 ? 'white' : 'white', color: future.length === 0 ? '#d1d5db' : '#374151', cursor: future.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
               title="Redo (Ctrl+Y)"
             >
               ⟳ Redo
@@ -558,9 +591,8 @@ const Test: React.FC = () => {
           {/* MAP CANVAS */}
           <div 
             ref={containerRef}
-            onWheel={handleWheel}
             onMouseDown={handleMouseDown}
-            style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#f3f4f6', cursor: isPanning ? 'grabbing' : (mode === 'view' && !draggedNode ? 'grab' : 'default') }}
+            style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#f3f4f6', cursor: isPanning ? 'grabbing' : (mode === 'view' && !draggedNode ? 'grab' : 'default'), touchAction: 'none' }}
           >
             <div style={{ 
               position: 'relative', 
@@ -570,14 +602,14 @@ const Test: React.FC = () => {
               transformOrigin: '0 0',
               transition: isPanning ? 'none' : 'transform 0.1s ease-out'
             }}>
-              <img src={maps[selectedMap].svg} alt="Map" style={{ display: 'block', width: '1285px', height: '731px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+              <img src={maps[selectedMap].svg} alt="Map" style={{ display: 'block', width: `${dimensions.width}px`, height: `${dimensions.height}px`, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
               <svg
                 ref={svgRef}
                 onClick={handleSvgClick}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                style={{ position: 'absolute', top: 0, left: 0, width: '1285px', height: '731px' }}
-                viewBox="0 0 1285 731"
+                style={{ position: 'absolute', top: 0, left: 0, width: `${dimensions.width}px`, height: `${dimensions.height}px` }}
+                viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
               >
                 {/* Simulation Path */}
                 {simPath.length > 1 && (
