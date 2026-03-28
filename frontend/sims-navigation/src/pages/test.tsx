@@ -51,6 +51,7 @@ const Test: React.FC = () => {
   const [lineStartPos, setLineStartPos] = useState<{ x: number, y: number, id: string } | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, endX: number, endY: number} | null>(null);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [selectedNodeForEdge, setSelectedNodeForEdge] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [simPath, setSimPath] = useState<string[]>([]);
@@ -81,6 +82,7 @@ const Test: React.FC = () => {
   const [past, setPast] = useState<MapData[]>([]);
   const [future, setFuture] = useState<MapData[]>([]);
   const dragStartStateRef = useRef<MapData | null>(null);
+  const wasDraggingRef = useRef(false);
 
   const STORAGE_KEY = `sims_map_draft_${selectedMap}`;
 
@@ -141,9 +143,23 @@ const Test: React.FC = () => {
         case 's': saveOnly(); break;
         case '0': setTransform({ x: 0, y: 0, scale: 1 }); break;
       }
+
+      if (e.code === 'Space' && e.target === document.body) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+      }
     };
+    
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setIsSpacePressed(false);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [mapData, past, future]);
 
   useEffect(() => {
@@ -222,20 +238,27 @@ const Test: React.FC = () => {
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (mode === 'view' && !draggedNode) {
-      if (e.shiftKey) {
-        const coords = getSvgCoords(e);
-        setSelectionBox({startX: coords.x, startY: coords.y, endX: coords.x, endY: coords.y});
-      } else {
-        setIsPanning(true);
-        setLastMousePos({ x: e.clientX, y: e.clientY });
-      }
+    wasDraggingRef.current = false;
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && isSpacePressed)) {
+      e.preventDefault();
+      setIsPanning(true);
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
+    if (mode === 'view' && !draggedNode && e.button === 0) {
+      const coords = getSvgCoords(e);
+      setSelectionBox({startX: coords.x, startY: coords.y, endX: coords.x, endY: coords.y});
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const coords = getSvgCoords(e);
     setMousePos(coords);
+
+    if (!wasDraggingRef.current && (Math.abs(e.clientX - lastMousePos.x) > 3 || Math.abs(e.clientY - lastMousePos.y) > 3)) {
+      wasDraggingRef.current = true;
+    }
 
     if (selectionBox) {
       setSelectionBox(prev => ({ ...prev!, endX: coords.x, endY: coords.y }));
@@ -269,25 +292,28 @@ const Test: React.FC = () => {
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (selectionBox) {
-       const minX = Math.min(selectionBox.startX, selectionBox.endX);
-       const maxX = Math.max(selectionBox.startX, selectionBox.endX);
-       const minY = Math.min(selectionBox.startY, selectionBox.endY);
-       const maxY = Math.max(selectionBox.startY, selectionBox.endY);
-       
-       const selected = Object.entries(mapData.nodes).filter(([_, node]) => {
-          return node.x >= minX && node.x <= maxX && node.y >= minY && node.y <= maxY;
-       }).map(([id]) => id);
-
-       if (e.shiftKey && !e.ctrlKey) {
-           setSelectedNodes(prev => Array.from(new Set([...prev, ...selected])));
-       } else {
-           setSelectedNodes(selected);
+       if (wasDraggingRef.current) {
+         const minX = Math.min(selectionBox.startX, selectionBox.endX);
+         const maxX = Math.max(selectionBox.startX, selectionBox.endX);
+         const minY = Math.min(selectionBox.startY, selectionBox.endY);
+         const maxY = Math.max(selectionBox.startY, selectionBox.endY);
+         
+         const selected = Object.entries(mapData.nodes).filter(([_, node]) => {
+            return node.x >= minX && node.x <= maxX && node.y >= minY && node.y <= maxY;
+         }).map(([id]) => id);
+  
+         if (e.shiftKey && !e.ctrlKey) {
+             setSelectedNodes(prev => Array.from(new Set([...prev, ...selected])));
+         } else {
+             setSelectedNodes(selected);
+         }
        }
        setSelectionBox(null);
     }
     
-    if (draggedNode && dragStartStateRef.current) {
-      setPast(prev => [...prev.slice(-29), dragStartStateRef.current!]);
+    if (draggedNode && dragStartStateRef.current && wasDraggingRef.current) {
+      const stateToSave = dragStartStateRef.current;
+      setPast(prev => [...prev.slice(-29), stateToSave]);
       setFuture([]);
     }
     setDraggedNode(null);
@@ -316,7 +342,7 @@ const Test: React.FC = () => {
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (mode === 'view') {
-      if (!e.shiftKey) setSelectedNodes([]);
+      if (!e.shiftKey && !wasDraggingRef.current) setSelectedNodes([]);
       return;
     }
     if (mode !== 'add_path' && mode !== 'add_destination' && mode !== 'add_line') return;
@@ -394,9 +420,8 @@ const Test: React.FC = () => {
     e.stopPropagation();
 
     if (mode === 'view') {
-      if (e.shiftKey || e.ctrlKey || e.metaKey) {
-        setSelectedNodes(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
-      } else {
+      if (wasDraggingRef.current) return;
+      if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
         setSelectedNodes([nodeId]);
       }
     }
@@ -767,9 +792,10 @@ const Test: React.FC = () => {
 
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px', color: '#6b7280', fontSize: '12px' }}>
               <div style={{ display: 'flex', gap: '12px', borderRight: '1px solid #d1d5db', paddingRight: '12px' }}>
-                <span title="Select multiple nodes" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Shift+Drag</kbd> Multi-Select</span>
+                <span title="Select multiple nodes" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Drag</kbd> Multi-Select</span>
+                <span title="Pan the map view" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Space+Drag</kbd> Pan View</span>
                 <span title="Split edge with node" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Click Edge</kbd> Split Line</span>
-                <span title="Reset Pan/Zoom" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>0</kbd> Reset View</span>
+                <span title="Reset Pan/Zoom" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>0</kbd> Reset</span>
               </div>
               
               <div style={{ minWidth: '150px', textAlign: 'right', fontWeight: 500 }}>
@@ -786,7 +812,7 @@ const Test: React.FC = () => {
           <div 
             ref={containerRef}
             onMouseDown={handleMouseDown}
-            style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#f3f4f6', cursor: isPanning ? 'grabbing' : (mode === 'view' && !draggedNode ? 'grab' : 'default'), touchAction: 'none' }}
+            style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#f3f4f6', cursor: isPanning ? 'grabbing' : (mode === 'view' && !draggedNode ? (isSpacePressed ? 'grab' : 'crosshair') : 'default'), touchAction: 'none' }}
           >
             <div style={{ 
               position: 'relative', 
@@ -874,9 +900,14 @@ const Test: React.FC = () => {
                             e.stopPropagation(); 
                             setDraggedNode(nodeId); 
                             dragStartStateRef.current = mapData;
+                            wasDraggingRef.current = false;
+                            setLastMousePos({ x: e.clientX, y: e.clientY });
+
                             if (!selectedNodes.includes(nodeId)) {
                               if (!e.shiftKey && !e.ctrlKey && !e.metaKey) setSelectedNodes([nodeId]);
                               else setSelectedNodes(prev => [...prev, nodeId]);
+                            } else if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                              setSelectedNodes(prev => prev.filter(id => id !== nodeId));
                             }
                           } 
                         }}
