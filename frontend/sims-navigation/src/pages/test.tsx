@@ -49,7 +49,8 @@ const Test: React.FC = () => {
 
   const [mode, setMode] = useState<'view' | 'add_path' | 'add_destination' | 'add_edge' | 'add_line' | 'delete' | 'simulate'>('view');
   const [lineStartPos, setLineStartPos] = useState<{ x: number, y: number, id: string } | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
+  const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, endX: number, endY: number} | null>(null);
   const [selectedNodeForEdge, setSelectedNodeForEdge] = useState<string | null>(null);
   const [simNodes, setSimNodes] = useState<{ start: string | null; end: string | null }>({ start: null, end: null });
   const [simPath, setSimPath] = useState<string[]>([]);
@@ -109,6 +110,14 @@ const Test: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selectedNodes.length > 0 && mode === 'view') {
+             e.preventDefault();
+             deleteNodes(selectedNodes);
+             return;
+          }
+      }
+
       // Undo/Redo
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -126,6 +135,7 @@ const Test: React.FC = () => {
         case 'n': setMode('add_path'); break;
         case 'e': setMode('add_edge'); break;
         case 'l': setMode('add_line'); break;
+        case 'm': setMode('add_destination'); break;
         case 'd': setMode('delete'); break;
         case 't': setMode('simulate'); break;
         case 's': saveOnly(); break;
@@ -213,11 +223,13 @@ const Test: React.FC = () => {
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (mode === 'view' && !draggedNode) {
-      setIsPanning(true);
-      setLastMousePos({ x: e.clientX, y: e.clientY });
-    }
-    if (draggedNode && mode === 'view') {
-      dragStartStateRef.current = mapData;
+      if (e.shiftKey) {
+        const coords = getSvgCoords(e);
+        setSelectionBox({startX: coords.x, startY: coords.y, endX: coords.x, endY: coords.y});
+      } else {
+        setIsPanning(true);
+        setLastMousePos({ x: e.clientX, y: e.clientY });
+      }
     }
   };
 
@@ -225,14 +237,28 @@ const Test: React.FC = () => {
     const coords = getSvgCoords(e);
     setMousePos(coords);
 
-    if (draggedNode && mode === 'view') {
-      setMapData(prev => ({
-        ...prev,
-        nodes: {
-          ...prev.nodes,
-          [draggedNode]: { ...prev.nodes[draggedNode], x: coords.x, y: coords.y }
-        }
-      }));
+    if (selectionBox) {
+      setSelectionBox(prev => ({ ...prev!, endX: coords.x, endY: coords.y }));
+    } else if (draggedNode && mode === 'view' && dragStartStateRef.current) {
+      const startState = dragStartStateRef.current;
+      const startNode = startState.nodes[draggedNode];
+      if (startNode) {
+        const dx = coords.x - startNode.x;
+        const dy = coords.y - startNode.y;
+        
+        const nodesToMove = selectedNodes.includes(draggedNode) ? selectedNodes : [draggedNode];
+        
+        setMapData(prev => {
+          const newNodes = { ...prev.nodes };
+          nodesToMove.forEach(id => {
+            const initialNode = startState.nodes[id];
+            if (initialNode) {
+              newNodes[id] = { ...initialNode, x: Number((initialNode.x + dx).toFixed(1)), y: Number((initialNode.y + dy).toFixed(1)) };
+            }
+          });
+          return { ...prev, nodes: newNodes };
+        });
+      }
     } else if (isPanning) {
       const dx = e.clientX - lastMousePos.x;
       const dy = e.clientY - lastMousePos.y;
@@ -241,7 +267,25 @@ const Test: React.FC = () => {
     }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (selectionBox) {
+       const minX = Math.min(selectionBox.startX, selectionBox.endX);
+       const maxX = Math.max(selectionBox.startX, selectionBox.endX);
+       const minY = Math.min(selectionBox.startY, selectionBox.endY);
+       const maxY = Math.max(selectionBox.startY, selectionBox.endY);
+       
+       const selected = Object.entries(mapData.nodes).filter(([_, node]) => {
+          return node.x >= minX && node.x <= maxX && node.y >= minY && node.y <= maxY;
+       }).map(([id]) => id);
+
+       if (e.shiftKey && !e.ctrlKey) {
+           setSelectedNodes(prev => Array.from(new Set([...prev, ...selected])));
+       } else {
+           setSelectedNodes(selected);
+       }
+       setSelectionBox(null);
+    }
+    
     if (draggedNode && dragStartStateRef.current) {
       setPast(prev => [...prev.slice(-29), dragStartStateRef.current!]);
       setFuture([]);
@@ -272,7 +316,7 @@ const Test: React.FC = () => {
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (mode === 'view') {
-      setSelectedNodeId(null);
+      if (!e.shiftKey) setSelectedNodes([]);
       return;
     }
     if (mode !== 'add_path' && mode !== 'add_destination' && mode !== 'add_line') return;
@@ -341,7 +385,7 @@ const Test: React.FC = () => {
           [newId]: { x, y, type: 'destination' }
         }
       }));
-      setSelectedNodeId(newId);
+      setSelectedNodes([newId]);
       setMode('view'); // Switch to view so they can edit immediately
     }
   };
@@ -350,7 +394,11 @@ const Test: React.FC = () => {
     e.stopPropagation();
 
     if (mode === 'view') {
-      setSelectedNodeId(nodeId);
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        setSelectedNodes(prev => prev.includes(nodeId) ? prev.filter(id => id !== nodeId) : [...prev, nodeId]);
+      } else {
+        setSelectedNodes([nodeId]);
+      }
     }
 
     else if (mode === 'simulate') {
@@ -437,23 +485,7 @@ const Test: React.FC = () => {
     }
 
     else if (mode === 'delete') {
-      setMapData(prev => {
-        const newNodes = { ...prev.nodes };
-        delete newNodes[nodeId];
-
-        const newDest = { ...prev.destinations };
-
-        for (const [name, dest] of Object.entries(newDest)) {
-          if (dest.node === nodeId) delete newDest[name];
-        }
-
-        return {
-          ...prev,
-          nodes: newNodes,
-          edges: prev.edges.filter(edge => edge.from !== nodeId && edge.to !== nodeId),
-          destinations: newDest
-        };
-      });
+      deleteNodes([nodeId]);
     }
   };
 
@@ -466,6 +498,33 @@ const Test: React.FC = () => {
         ...prev,
         edges: prev.edges.filter((_, i) => i !== edgeIndex)
       }));
+    } else if (mode === 'view' || mode === 'add_path' || mode === 'add_line') {
+      takeSnapshot();
+      const coords = getSvgCoords(e);
+      
+      let maxNum = 0;
+      Object.keys(mapData.nodes).forEach(idArg => {
+        const match = idArg.match(/^node_(\d+)$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      });
+      const newId = 'node_' + String(maxNum + 1).padStart(3, '0');
+      
+      setMapData(prev => {
+        const edge = prev.edges[edgeIndex];
+        const newEdges = [...prev.edges];
+        newEdges.splice(edgeIndex, 1);
+        newEdges.push({ from: edge.from, to: newId });
+        newEdges.push({ from: newId, to: edge.to });
+        return {
+          ...prev,
+          nodes: { ...prev.nodes, [newId]: { x: coords.x, y: coords.y, type: 'path' } },
+          edges: newEdges
+        };
+      });
+      setSelectedNodes([newId]);
     }
   };
 
@@ -553,23 +612,23 @@ const Test: React.FC = () => {
     });
   };
 
-  const deleteNode = (nodeId: string) => {
+  const deleteNodes = (nodeIds: string[]) => {
     takeSnapshot();
     setMapData(prev => {
       const newNodes = { ...prev.nodes };
-      delete newNodes[nodeId];
+      nodeIds.forEach(id => delete newNodes[id]);
       const newDest = { ...prev.destinations };
       for (const [name, dest] of Object.entries(newDest)) {
-        if (dest.node === nodeId) delete newDest[name];
+        if (nodeIds.includes(dest.node)) delete newDest[name];
       }
       return {
         ...prev,
         nodes: newNodes,
-        edges: prev.edges.filter(edge => edge.from !== nodeId && edge.to !== nodeId),
+        edges: prev.edges.filter(edge => !nodeIds.includes(edge.from) && !nodeIds.includes(edge.to)),
         destinations: newDest
       };
     });
-    setSelectedNodeId(null);
+    setSelectedNodes(prev => prev.filter(id => !nodeIds.includes(id)));
   };
 
   const nodeCount = Object.keys(mapData.nodes).length;
@@ -617,9 +676,10 @@ const Test: React.FC = () => {
     downloadJson();
   };
 
-  const selectedNode = selectedNodeId ? mapData.nodes[selectedNodeId] : null;
-  const selectedDestName = selectedNodeId ? getDestinationName(selectedNodeId) : null;
-  const selectedDestPic = selectedDestName ? mapData.destinations[selectedDestName].pic : '';
+  const singleSelectedNodeId = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  const selectedNode = singleSelectedNodeId ? mapData.nodes[singleSelectedNodeId] : null;
+  const selectedDestName = singleSelectedNodeId ? getDestinationName(singleSelectedNodeId) : null;
+  const selectedDestPic = selectedDestName && mapData.destinations[selectedDestName] ? mapData.destinations[selectedDestName].pic : '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', padding: '16px', boxSizing: 'border-box', fontFamily: 'system-ui, sans-serif', backgroundColor: '#f9fafb' }}>
@@ -657,23 +717,25 @@ const Test: React.FC = () => {
             <button 
               onClick={undo} 
               disabled={past.length === 0}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: past.length === 0 ? '#f9fafb' : 'white', color: past.length === 0 ? '#d1d5db' : '#374151', cursor: past.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
-              title="Undo (Ctrl+Z)"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: past.length === 0 ? '#f9fafb' : 'white', color: past.length === 0 ? '#d1d5db' : '#374151', cursor: past.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+              title="Undo"
             >
-              ⟲ Undo
+              ⟲ Undo <kbd style={{ fontSize: '10px', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px', color: past.length === 0 ? '#d1d5db' : '#6b7280', border: '1px solid #e5e7eb' }}>Ctrl+Z</kbd>
             </button>
             <button 
               onClick={redo} 
               disabled={future.length === 0}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: future.length === 0 ? 'white' : 'white', color: future.length === 0 ? '#d1d5db' : '#374151', cursor: future.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 500 }}
-              title="Redo (Ctrl+Y)"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white', color: future.length === 0 ? '#d1d5db' : '#374151', cursor: future.length === 0 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+              title="Redo"
             >
-              ⟳ Redo
+              ⟳ Redo <kbd style={{ fontSize: '10px', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px', color: future.length === 0 ? '#d1d5db' : '#6b7280', border: '1px solid #e5e7eb' }}>Ctrl+Y</kbd>
             </button>
           </div>
 
-          <button onClick={restoreOriginal} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white', color: '#374151', cursor: 'pointer', fontWeight: 500 }}>Restore</button>
-          <button onClick={saveOnly} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', cursor: 'pointer', fontWeight: 600 }}>Export JSON</button>
+          <button onClick={restoreOriginal} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>Restore</button>
+          <button onClick={saveOnly} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: '13px', boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)' }}>
+             Export JSON <kbd style={{ fontSize: '10px', background: 'rgba(255,255,255,0.25)', padding: '2px 5px', borderRadius: '4px', color: 'white' }}>S</kbd>
+          </button>
         </div>
       </div>
 
@@ -683,21 +745,40 @@ const Test: React.FC = () => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           
           {/* TOOLBAR */}
-          <div style={{ display: 'flex', gap: 8, padding: '12px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb' }}>
-            <button onClick={() => setMode('view')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'view' ? '#111827' : 'white', color: mode === 'view' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>View (V)</button>
-            <button onClick={() => setMode('add_path')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_path' ? '#111827' : 'white', color: mode === 'add_path' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Node (N)</button>
-            <button onClick={() => setMode('add_edge')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_edge' ? '#111827' : 'white', color: mode === 'add_edge' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Edge (E)</button>
-            <button onClick={() => setMode('add_line')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_line' ? '#111827' : 'white', color: mode === 'add_line' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Draw Line (L)</button>
-            <button onClick={() => setMode('add_destination')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'add_destination' ? '#111827' : 'white', color: mode === 'add_destination' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Dest</button>
-            <button onClick={() => setMode('simulate')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'simulate' ? '#f59e0b' : 'white', color: mode === 'simulate' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Test Path (T)</button>
-            <button onClick={() => setMode('delete')} style={{ padding: '8px 12px', borderRadius: '6px', border: 'none', background: mode === 'delete' ? '#ef4444' : 'white', color: mode === 'delete' ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 500, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Delete (D)</button>
+          <div style={{ display: 'flex', gap: 8, padding: '12px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb', alignItems: 'center' }}>
+            {[
+              { id: 'view', label: 'View / Move', key: 'V' },
+              { id: 'add_path', label: '+ Node', key: 'N' },
+              { id: 'add_edge', label: '+ Edge', key: 'E' },
+              { id: 'add_line', label: 'Draw Line', key: 'L' },
+              { id: 'add_destination', label: '+ Dest', key: 'M' },
+              { id: 'simulate', label: 'Test Path', key: 'T', color: '#f59e0b' },
+              { id: 'delete', label: 'Delete', key: 'D', color: '#ef4444' }
+            ].map(btn => {
+              const isActive = mode === btn.id;
+              const bgColor = btn.color || '#111827';
+              return (
+                <button key={btn.id} onClick={() => setMode(btn.id as any)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: isActive ? 'none' : '1px solid #e5e7eb', background: isActive ? bgColor : 'white', color: isActive ? 'white' : '#4b5563', cursor: 'pointer', fontWeight: 600, fontSize: '13px', boxShadow: isActive ? `0 2px 4px ${bgColor}40` : '0 1px 2px rgba(0,0,0,0.02)', transition: 'all 0.1s' }}>
+                  {btn.label}
+                  <kbd style={{ fontSize: '10px', fontFamily: 'monospace', padding: '2px 5px', background: isActive ? 'rgba(255,255,255,0.2)' : '#f3f4f6', borderRadius: '4px', color: isActive ? '#fff' : '#6b7280', border: isActive ? 'none' : '1px solid #d1d5db', marginLeft: '2px' }}>{btn.key}</kbd>
+                </button>
+              );
+            })}
 
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', color: '#6b7280', fontSize: '13px' }}>
-              {mode === 'add_edge' && selectedNodeForEdge && <span>Connecting <code>{selectedNodeForEdge}</code>...</span>}
-              {mode === 'add_line' && <span>{lineStartPos ? `Click somewhere to draw line` : `Select start point`}</span>}
-              {mode === 'simulate' && (
-                <span>{simNodes.start ? `From ${simNodes.start}` : 'Select start'} {simNodes.end ? `to ${simNodes.end}` : simNodes.start ? '• Select end' : ''}</span>
-              )}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px', color: '#6b7280', fontSize: '12px' }}>
+              <div style={{ display: 'flex', gap: '12px', borderRight: '1px solid #d1d5db', paddingRight: '12px' }}>
+                <span title="Select multiple nodes" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Shift+Drag</kbd> Multi-Select</span>
+                <span title="Split edge with node" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>Click Edge</kbd> Split Line</span>
+                <span title="Reset Pan/Zoom" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><kbd style={{ background: 'white', border: '1px solid #d1d5db', padding: '2px 4px', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>0</kbd> Reset View</span>
+              </div>
+              
+              <div style={{ minWidth: '150px', textAlign: 'right', fontWeight: 500 }}>
+                {mode === 'add_edge' && selectedNodeForEdge && <span>Connecting <code>{selectedNodeForEdge}</code>...</span>}
+                {mode === 'add_line' && <span>{lineStartPos ? `Click somewhere to draw line` : `Select start point`}</span>}
+                {mode === 'simulate' && (
+                  <span>{simNodes.start ? `From ${simNodes.start}` : 'Select start'} {simNodes.end ? `to ${simNodes.end}` : simNodes.start ? '• Select end' : ''}</span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -747,6 +828,17 @@ const Test: React.FC = () => {
                   />
                 )}
 
+                {/* Selection Box */}
+                {selectionBox && (
+                  <rect 
+                    x={Math.min(selectionBox.startX, selectionBox.endX)} 
+                    y={Math.min(selectionBox.startY, selectionBox.endY)} 
+                    width={Math.abs(selectionBox.endX - selectionBox.startX)} 
+                    height={Math.abs(selectionBox.endY - selectionBox.startY)} 
+                    fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={1} 
+                  />
+                )}
+
                 {/* Edges */}
                 {mapData.edges.map((edge, index) => {
                   const fromNode = mapData.nodes[edge.from];
@@ -766,7 +858,7 @@ const Test: React.FC = () => {
                 {/* Nodes */}
                 {Object.entries(mapData.nodes).map(([nodeId, node]) => {
                   const isDest = node.type === 'destination';
-                  const isSelected = selectedNodeId === nodeId;
+                  const isSelected = selectedNodes.includes(nodeId);
                   const name = getDestinationName(nodeId);
 
                   return (
@@ -777,7 +869,17 @@ const Test: React.FC = () => {
                         fill={isDest ? '#a855f7' : '#10b981'}
                         stroke={isSelected ? '#111827' : 'white'}
                         strokeWidth={isSelected ? 3 : 1.5}
-                        onMouseDown={(e) => { if (mode === 'view') { e.stopPropagation(); setDraggedNode(nodeId); } }}
+                        onMouseDown={(e) => { 
+                          if (mode === 'view') { 
+                            e.stopPropagation(); 
+                            setDraggedNode(nodeId); 
+                            dragStartStateRef.current = mapData;
+                            if (!selectedNodes.includes(nodeId)) {
+                              if (!e.shiftKey && !e.ctrlKey && !e.metaKey) setSelectedNodes([nodeId]);
+                              else setSelectedNodes(prev => [...prev, nodeId]);
+                            }
+                          } 
+                        }}
                         onClick={(e) => handleNodeClick(e, nodeId)}
                         onMouseEnter={() => setHoveredNode(nodeId)}
                         onMouseLeave={() => setHoveredNode(null)}
@@ -801,23 +903,32 @@ const Test: React.FC = () => {
           </div>
 
           <div style={{ flex: 1, padding: '16px', overflowY: 'auto' }}>
-            {selectedNodeId && selectedNode ? (
+            {selectedNodes.length > 1 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', textAlign: 'center', color: '#4b5563', marginTop: '40px' }}>
+                <div style={{ fontSize: '48px' }}>📦</div>
+                <div>
+                  <h3 style={{ margin: 0 }}>{selectedNodes.length} Nodes Selected</h3>
+                  <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '8px' }}>Drag to move them all together on the map, or delete them in bulk.</p>
+                </div>
+                <button onClick={() => deleteNodes(selectedNodes)} style={{ width: '100%', marginTop: '10px', padding: '10px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>Delete All ({selectedNodes.length})</button>
+              </div>
+            ) : singleSelectedNodeId && selectedNode ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase' }}>Node ID</label>
-                  <code style={{ background: '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '13px', display: 'block' }}>{selectedNodeId}</code>
+                  <code style={{ background: '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '13px', display: 'block' }}>{singleSelectedNodeId}</code>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>X Coord</label>
-                    <input type="number" value={selectedNode.x} onChange={(e) => handleUpdateNode(selectedNodeId, { x: Number(e.target.value) })} 
+                    <input type="number" value={selectedNode.x} onChange={(e) => handleUpdateNode(singleSelectedNodeId, { x: Number(e.target.value) })} 
                       style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>Y Coord</label>
-                    <input type="number" value={selectedNode.y} onChange={(e) => handleUpdateNode(selectedNodeId, { y: Number(e.target.value) })} 
+                    <input type="number" value={selectedNode.y} onChange={(e) => handleUpdateNode(singleSelectedNodeId, { y: Number(e.target.value) })} 
                       style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '14px' }} />
                   </div>
                 </div>
@@ -825,9 +936,9 @@ const Test: React.FC = () => {
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#6b7280', marginBottom: '4px' }}>Type</label>
                   <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
-                    <button onClick={() => handleUpdateNode(selectedNodeId, { type: 'path' })} 
+                    <button onClick={() => handleUpdateNode(singleSelectedNodeId, { type: 'path' })} 
                       style={{ flex: 1, padding: '6px', borderRadius: '6px', border: 'none', background: selectedNode.type === 'path' ? 'white' : 'transparent', color: selectedNode.type === 'path' ? '#111827' : '#6b7280', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: selectedNode.type === 'path' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}>Path</button>
-                    <button onClick={() => handleUpdateNode(selectedNodeId, { type: 'destination' })} 
+                    <button onClick={() => handleUpdateNode(singleSelectedNodeId, { type: 'destination' })} 
                       style={{ flex: 1, padding: '6px', borderRadius: '6px', border: 'none', background: selectedNode.type === 'destination' ? 'white' : 'transparent', color: selectedNode.type === 'destination' ? '#111827' : '#6b7280', fontSize: '13px', fontWeight: 600, cursor: 'pointer', boxShadow: selectedNode.type === 'destination' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}>Dest</button>
                   </div>
                 </div>
@@ -836,18 +947,18 @@ const Test: React.FC = () => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '12px', background: '#faf5ff', borderRadius: '10px', border: '1px solid #f3e8ff' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#7e22ce', marginBottom: '4px' }}>Display Name</label>
-                      <input type="text" value={selectedDestName || ''} onChange={(e) => handleUpdateDestination(selectedNodeId, e.target.value, selectedDestPic)} placeholder="e.g. B204"
+                      <input type="text" value={selectedDestName || ''} onChange={(e) => handleUpdateDestination(singleSelectedNodeId, e.target.value, selectedDestPic)} placeholder="e.g. B204"
                         style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #e9d5ff', fontSize: '14px', outlineColor: '#a855f7' }} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#7e22ce', marginBottom: '4px' }}>Photo Filename</label>
-                      <input type="text" value={selectedDestPic || ''} onChange={(e) => handleUpdateDestination(selectedNodeId, selectedDestName || '', e.target.value)} placeholder="e.g. B204.jpeg"
+                      <input type="text" value={selectedDestPic || ''} onChange={(e) => handleUpdateDestination(singleSelectedNodeId, selectedDestName || '', e.target.value)} placeholder="e.g. B204.jpeg"
                         style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #e9d5ff', fontSize: '14px', outlineColor: '#a855f7' }} />
                     </div>
                   </div>
                 )}
 
-                <button onClick={() => deleteNode(selectedNodeId)} style={{ marginTop: '10px', padding: '10px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>Delete Node</button>
+                <button onClick={() => deleteNodes([singleSelectedNodeId])} style={{ marginTop: '10px', padding: '10px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>Delete Node</button>
 
               </div>
             ) : (
