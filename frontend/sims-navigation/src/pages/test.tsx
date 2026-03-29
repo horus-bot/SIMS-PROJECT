@@ -82,6 +82,7 @@ const Test: React.FC = () => {
   const [past, setPast] = useState<MapData[]>([]);
   const [future, setFuture] = useState<MapData[]>([]);
   const dragStartStateRef = useRef<MapData | null>(null);
+  const dragStartMousePosRef = useRef<{x: number, y: number} | null>(null);
   const wasDraggingRef = useRef(false);
 
   const STORAGE_KEY = `sims_map_draft_${selectedMap}`;
@@ -160,7 +161,7 @@ const Test: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [mapData, past, future]);
+  }, [mapData, past, future, selectedNodes, mode]);
 
   useEffect(() => {
     if (mode !== 'add_line') {
@@ -262,14 +263,12 @@ const Test: React.FC = () => {
 
     if (selectionBox) {
       setSelectionBox(prev => ({ ...prev!, endX: coords.x, endY: coords.y }));
-    } else if (draggedNode && mode === 'view' && dragStartStateRef.current) {
+    } else if (draggedNode && mode === 'view' && dragStartStateRef.current && dragStartMousePosRef.current) {
       const startState = dragStartStateRef.current;
-      const startNode = startState.nodes[draggedNode];
-      if (startNode) {
-        const dx = coords.x - startNode.x;
-        const dy = coords.y - startNode.y;
-        
-        const nodesToMove = selectedNodes.includes(draggedNode) ? selectedNodes : [draggedNode];
+      const dx = coords.x - dragStartMousePosRef.current.x;
+      const dy = coords.y - dragStartMousePosRef.current.y;
+      
+      const nodesToMove = selectedNodes.includes(draggedNode) ? selectedNodes : [draggedNode];
         
         setMapData(prev => {
           const newNodes = { ...prev.nodes };
@@ -281,7 +280,6 @@ const Test: React.FC = () => {
           });
           return { ...prev, nodes: newNodes };
         });
-      }
     } else if (isPanning) {
       const dx = e.clientX - lastMousePos.x;
       const dy = e.clientY - lastMousePos.y;
@@ -319,6 +317,7 @@ const Test: React.FC = () => {
     setDraggedNode(null);
     setIsPanning(false);
     dragStartStateRef.current = null;
+    dragStartMousePosRef.current = null;
   };
 
   const generateNodeId = () => {
@@ -902,6 +901,7 @@ const Test: React.FC = () => {
                             dragStartStateRef.current = mapData;
                             wasDraggingRef.current = false;
                             setLastMousePos({ x: e.clientX, y: e.clientY });
+                            dragStartMousePosRef.current = getSvgCoords(e);
 
                             if (!selectedNodes.includes(nodeId)) {
                               if (!e.shiftKey && !e.ctrlKey && !e.metaKey) setSelectedNodes([nodeId]);
