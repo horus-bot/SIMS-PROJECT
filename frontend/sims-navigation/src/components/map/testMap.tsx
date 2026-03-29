@@ -1,103 +1,55 @@
 import React, { useMemo, useState, useEffect } from "react";
-import testData from "../../data/test_1.json";
-
-/*
-|--------------------------------------------------------------------------
-| TestMapProps
-|--------------------------------------------------------------------------
-| Defines the data this component can receive from the parent.
-| This component is purely a renderer, so it only receives
-| navigation data and displays it visually on the map.
-|
-| routePath   → array of node IDs representing the planned navigation route
-| actualPath  → coordinates of the user's real movement (for tracking)
-| isDeviated  → if true, actual path is shown as a dashed warning line
-|--------------------------------------------------------------------------
-*/
+import testDataDefault from "../../data/test_1.json";
 
 interface TestMapProps {
   routePath?: string[];
   actualPath?: { x: number; y: number }[];
   isDeviated?: boolean;
+  floorData?: any;
 }
-
-/*
-|--------------------------------------------------------------------------
-| TestMap Component
-|--------------------------------------------------------------------------
-| Responsible for:
-| 1. Loading the base SVG floor map
-| 2. Creating a pixel-based canvas using SVG overlay
-| 3. Rendering the navigation route
-| 4. Rendering the actual user path
-| 5. Displaying start and destination markers
-|--------------------------------------------------------------------------
-*/
 
 const TestMap: React.FC<TestMapProps> = ({
   routePath = [],
   actualPath = [],
-  isDeviated = false
+  isDeviated = false,
+  floorData
 }) => {
-
-  /*
-  |--------------------------------------------------------------------------
-  | Map Dimensions State
-  |--------------------------------------------------------------------------
-  | Stores the natural width and height of the SVG map.
-  | This ensures our overlay SVG uses the exact same coordinate space
-  | as the original map image.
-  |--------------------------------------------------------------------------
-  */
+  const currentData = floorData || testDataDefault;
 
   const [dimensions, setDimensions] = useState({
     width: 0,
     height: 0
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | Load Map Image
-  |--------------------------------------------------------------------------
-  | We load the SVG once to read its natural pixel dimensions.
-  | This allows the overlay SVG to perfectly align with the map.
-  |--------------------------------------------------------------------------
-  */
-
   useEffect(() => {
     const img = new Image();
-
     img.onload = () => {
       setDimensions({
         width: img.naturalWidth,
         height: img.naturalHeight
       });
     };
+    img.src = currentData.meta.svg;
+  }, [currentData.meta.svg]);
 
-    img.src = testData.meta.svg;
-  }, []);
-
-  /*
-  |--------------------------------------------------------------------------
-  | Convert route node IDs → SVG polyline points
-  |--------------------------------------------------------------------------
-  | Example:
-  |
-  | routePath = ["node_001","node_002","node_003"]
-  |
-  | becomes:
-  |
-  | "x1,y1 x2,y2 x3,y3"
-  |
-  | which is the format SVG uses for drawing connected paths.
-  |--------------------------------------------------------------------------
-  */
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(currentData.meta.svg)
+      .then((r) => r.text())
+      .then((text) => {
+        if (cancelled) return;
+        setSvgMarkup(text);
+      })
+      .catch(() => {
+        setSvgMarkup(null);
+      });
+    return () => { cancelled = true; };
+  }, [currentData.meta.svg]);
 
   const polylinePoints = useMemo(() => {
     if (!routePath || routePath.length < 2) return "";
-
-    const nodes = testData.nodes as Record<string, { x: number; y: number }>;
-
+    const nodes = currentData.nodes as Record<string, { x: number; y: number }>;
     return routePath
       .map((nodeId) => {
         const node = nodes[nodeId];
@@ -105,36 +57,18 @@ const TestMap: React.FC<TestMapProps> = ({
       })
       .filter((p) => p !== null)
       .join(" ");
-  }, [routePath]);
-
-  /*
-  |--------------------------------------------------------------------------
-  | Convert actual user path → SVG polyline points
-  |--------------------------------------------------------------------------
-  | This draws the real movement trail of the user.
-  | Used for deviation detection and breadcrumb navigation.
-  |--------------------------------------------------------------------------
-  */
+  }, [routePath, currentData.nodes]);
 
   const actualPolylinePoints = useMemo(() => {
     if (!actualPath || actualPath.length < 2) return "";
-
     return actualPath.map((p) => `${p.x},${p.y}`).join(" ");
   }, [actualPath]);
 
-  /*
-  |--------------------------------------------------------------------------
-  | Color Configuration
-  |--------------------------------------------------------------------------
-  | Defines the visual styling of the map elements.
-  |--------------------------------------------------------------------------
-  */
-
   const colors = {
-    pathMain: "#3B82F6",        // main navigation route
-    pathStroke: "white",        // outer stroke casing
-    highlight: "rgba(255,255,255,0.6)", // glossy highlight
-    actualPath: isDeviated ? "#EF4444" : "#10B981" // deviation warning
+    pathMain: "#3B82F6",
+    pathStroke: "white",
+    highlight: "rgba(255,255,255,0.6)",
+    actualPath: isDeviated ? "#EF4444" : "#10B981"
   };
 
   return (
@@ -147,32 +81,30 @@ const TestMap: React.FC<TestMapProps> = ({
         overflow: "hidden"
       }}
     >
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Base Map Image                                                     */}
-      {/* ------------------------------------------------------------------ */}
-      {/* This renders the building floor plan.                              */}
-      {/* The SVG overlay will be placed directly on top of this image.      */}
-      {/* ------------------------------------------------------------------ */}
-
-      <img
-        src={testData.meta.svg}
-        alt="Indoor Map"
-        width={dimensions.width || undefined}
-        height={dimensions.height || undefined}
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none"
-        }}
-      />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* SVG Overlay Canvas                                                 */}
-      {/* ------------------------------------------------------------------ */}
-      {/* This is where all navigation visuals are drawn.                    */}
-      {/* Coordinates in the JSON map directly to pixels here.               */}
-      {/* ------------------------------------------------------------------ */}
+      {svgMarkup ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            filter: "drop-shadow(0px 12px 32px rgba(0,0,0,0.12)) drop-shadow(0px 4px 8px rgba(0,0,0,0.06))",
+            transition: "all 0.3s ease"
+          }}
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+      ) : (
+        <img
+          src={currentData.meta.svg}
+          alt="Indoor Map"
+          width={dimensions.width || undefined}
+          height={dimensions.height || undefined}
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none"
+          }}
+        />
+      )}
 
       <svg
         width={dimensions.width || "100%"}
@@ -184,14 +116,7 @@ const TestMap: React.FC<TestMapProps> = ({
           zIndex: 10
         }}
       >
-
-        {/* ================================================================ */}
-        {/* SVG Definitions (Filters & Gradients)                           */}
-        {/* ================================================================ */}
-
         <defs>
-
-          {/* Shadow effect used for path glow */}
           <filter id="pathShadow" x="-10%" y="-10%" width="120%" height="120%">
             <feDropShadow
               dx="0"
@@ -201,25 +126,14 @@ const TestMap: React.FC<TestMapProps> = ({
               floodOpacity="0.12"
             />
           </filter>
-
-          {/* Destination pin gradient */}
           <linearGradient id="pinGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#EF4444" />
             <stop offset="100%" stopColor="#B91C1C" />
           </linearGradient>
-
         </defs>
-
-        {/* ================================================================ */}
-        {/* Planned Navigation Route                                         */}
-        {/* ================================================================ */}
 
         {polylinePoints && (
           <g filter="url(#pathShadow)">
-
-            {/* Outer casing removed: rendering only the main colored route */}
-
-            {/* Main route line */}
             <polyline
               points={polylinePoints}
               fill="none"
@@ -228,8 +142,6 @@ const TestMap: React.FC<TestMapProps> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-
-            {/* Gloss highlight */}
             <polyline
               points={polylinePoints}
               fill="none"
@@ -242,10 +154,6 @@ const TestMap: React.FC<TestMapProps> = ({
             />
           </g>
         )}
-
-        {/* ================================================================ */}
-        {/* Actual User Path (Breadcrumb Trail)                              */}
-        {/* ================================================================ */}
 
         {actualPolylinePoints && (
           <polyline
@@ -260,21 +168,13 @@ const TestMap: React.FC<TestMapProps> = ({
           />
         )}
 
-        {/* ================================================================ */}
-        {/* Start and Destination Markers                                    */}
-        {/* ================================================================ */}
-
         {routePath.length > 0 && dimensions.width > 0 && (
           <>
-            {/* ---------------- Start Marker ---------------- */}
-
             <g
               transform={`translate(${
-                (testData.nodes as any)[routePath[0]]?.x
-              }, ${(testData.nodes as any)[routePath[0]]?.y})`}
+                (currentData.nodes as any)[routePath[0]]?.x
+              }, ${(currentData.nodes as any)[routePath[0]]?.y})`}
             >
-
-              {/* Pulsing circle animation */}
               <circle r="24" fill="#22C55E" opacity="0.4">
                 <animate
                   attributeName="r"
@@ -289,26 +189,20 @@ const TestMap: React.FC<TestMapProps> = ({
                   repeatCount="indefinite"
                 />
               </circle>
-
-              {/* Solid center */}
               <circle r="14" fill="#22C55E" stroke="white" strokeWidth="3" />
             </g>
 
-            {/* ---------------- Destination Pin ---------------- */}
-
             <g
               transform={`translate(${
-                (testData.nodes as any)[
+                (currentData.nodes as any)[
                   routePath[routePath.length - 1]
                 ]?.x
               }, ${
-                (testData.nodes as any)[
+                (currentData.nodes as any)[
                   routePath[routePath.length - 1]
                 ]?.y
               })`}
             >
-
-              {/* Pin body */}
               <path
                 d="M0 0 C -2 -2 -10 -12 -10 -22 C -10 -32 -6 -38 0 -38 C 6 -38 10 -32 10 -22 C 10 -12 2 -2 0 0"
                 fill="url(#pinGradient)"
@@ -316,13 +210,10 @@ const TestMap: React.FC<TestMapProps> = ({
                 strokeWidth="2"
                 transform="translate(0,-2)"
               />
-
-              {/* Pin center dot */}
               <circle cx="0" cy="-24" r="4" fill="white" />
             </g>
           </>
         )}
-
       </svg>
     </div>
   );
