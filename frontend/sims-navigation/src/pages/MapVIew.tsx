@@ -652,13 +652,15 @@ const MapView = () => {
               const currentZoom = camState.current?.zoom ?? 1;
               // Much smaller base scale and tighter clamps for compact labels
               const labelScale = Math.max(0.45, Math.min(0.9, 0.7 * currentZoom));
+              // slightly enlarge destination label when user is near
+              const baseScale = 0.7 * labelScale * (near ? 1.15 : 1);
               return (
                 <div
                   key={dest.name}
                   onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
                   style={{
                     position: "absolute", left: dest.x, top: dest.y,
-                      transform: `translate(-50%, -100%) scale(${0.7 * labelScale})`,
+                      transform: `translate(-50%, -100%) scale(${baseScale})`,
                       marginTop: -Math.round(8 * labelScale),
                       background: "#FFFFFF",
                       color: "#374151",
