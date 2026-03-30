@@ -16,10 +16,10 @@ interface PinPickupMapProps {
 }
 
 // --- Constants ---
-const SNAP_THRESHOLD_PX = 120;  // SVG units — snap to nearest node within this radius
-const WARN_THRESHOLD_PX = 300;  // SVG units — warn user if nearest node is farther than this
-const INITIAL_ZOOM = 0.18;
-const MAX_ZOOM = 1.2;
+const SNAP_THRESHOLD_PX = 120;
+const WARN_THRESHOLD_PX = 300;
+const INITIAL_ZOOM = 0.28;   // readable on most phones
+const MAX_ZOOM = 1.4;
 const MIN_ZOOM = 0.06;
 
 type PinState = 'idle' | 'snapped' | 'warning' | 'far';
@@ -50,6 +50,35 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
     });
     return map;
   }, [floorData]);
+
+  // Pre-compute random animated edges (stable, computed once at mount)
+  const animatedEdges = React.useMemo(() => {
+    const edges = (floorData.edges || []) as Array<{from:string;to:string}>;
+    if (edges.length === 0) return [];
+    // Pick 6-8 random indices (deterministic via index math, no Math.random at render time)
+    const count = Math.min(8, Math.max(4, Math.floor(edges.length * 0.05) + 4));
+    const selected: Array<{
+      edge: {from:string;to:string};
+      reversed: boolean;
+      duration: number;
+      delay: number;
+    }> = [];
+    const step = Math.max(1, Math.floor(edges.length / count));
+    for (let i = 0; i < count && i * step < edges.length; i++) {
+      // Use prime-offset spread for visual variety
+      const idx = (i * step + i * 7) % edges.length;
+      selected.push({
+        edge: edges[idx],
+        // Direction: alternate reversed/normal irregularly
+        reversed: (i * 3 + 1) % 2 === 0,
+        // Duration: 7-13s range, each different
+        duration: 7 + (i * 1.7) % 6,
+        // Delay: 0-5s staggered
+        delay: (i * 0.9) % 5,
+      });
+    }
+    return selected;
+  }, [floorData.edges]);
 
   // Get viewport center in SVG coords (the point under the pin)
   const getPinSvgCoord = useCallback(() => {
@@ -104,8 +133,15 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
     if (!vp) return;
     const vpCx = vp.clientWidth / 2;
     const vpCy = vp.clientHeight / 2;
-    // Start centered on (600,500) which is near most map centers
-    setOffset({ x: vpCx - 600 * INITIAL_ZOOM, y: vpCy - 500 * INITIAL_ZOOM });
+    // Center on the centroid of all nodes so the map starts over the actual graph
+    const nodeVals = Object.values(floorData.nodes);
+    if (nodeVals.length > 0) {
+      const cx = nodeVals.reduce((s, n) => s + n.x, 0) / nodeVals.length;
+      const cy = nodeVals.reduce((s, n) => s + n.y, 0) / nodeVals.length;
+      setOffset({ x: vpCx - cx * INITIAL_ZOOM, y: vpCy - cy * INITIAL_ZOOM });
+    } else {
+      setOffset({ x: vpCx - 600 * INITIAL_ZOOM, y: vpCy - 500 * INITIAL_ZOOM });
+    }
     setTimeout(evaluatePin, 200);
   }, []);
 
@@ -263,37 +299,46 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
               `}</style>
             </defs>
 
-            {/* Draw each edge as a corridor line */}
-            {floorData.edges && Array.isArray(floorData.edges) && (floorData.edges as Array<{from:string;to:string}>).map((edge, i) => {
-              const fromNode = floorData.nodes[edge.from];
-              const toNode   = floorData.nodes[edge.to];
+            {/* ── LAYER 1: All edges as faint corridor network (full map paths) ── */}
+            {floorData.edges && Array.isArray(floorData.edges) &&
+              (floorData.edges as Array<{from:string;to:string}>).map((edge, i) => {
+                const fromNode = floorData.nodes[edge.from];
+                const toNode   = floorData.nodes[edge.to];
+                if (!fromNode || !toNode) return null;
+                return (
+                  <line key={`path-${i}`}
+                    x1={fromNode.x} y1={fromNode.y}
+                    x2={toNode.x}   y2={toNode.y}
+                    stroke="rgba(147,197,253,0.22)"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                  />
+                );
+              })
+            }
+
+            {/* ── LAYER 2: Random slow travelling lights on selected edges only ── */}
+            {animatedEdges.map((item, i) => {
+              const fromNode = floorData.nodes[item.edge.from];
+              const toNode   = floorData.nodes[item.edge.to];
               if (!fromNode || !toNode) return null;
               const len = Math.hypot(toNode.x - fromNode.x, toNode.y - fromNode.y);
+              // Reversed direction: swap endpoints
+              const [x1,y1,x2,y2] = item.reversed
+                ? [toNode.x, toNode.y, fromNode.x, fromNode.y]
+                : [fromNode.x, fromNode.y, toNode.x, toNode.y];
               return (
-                <g key={i}>
-                  {/* Base corridor stripe */}
-                  <line
-                    x1={fromNode.x} y1={fromNode.y}
-                    x2={toNode.x}   y2={toNode.y}
-                    stroke="rgba(99,179,237,0.35)"
-                    strokeWidth={6}
-                    strokeLinecap="round"
-                  />
-                  {/* Animated white travelling light */}
-                  <line
-                    x1={fromNode.x} y1={fromNode.y}
-                    x2={toNode.x}   y2={toNode.y}
-                    stroke="rgba(255,255,255,0.85)"
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeDasharray={`12 ${Math.max(len - 12, len * 0.7)}`}
-                    strokeDashoffset={0}
-                    style={{
-                      animation: `travelLight ${1.4 + (i % 5) * 0.3}s linear infinite`,
-                      animationDelay: `${(i % 7) * 0.18}s`,
-                    }}
-                  />
-                </g>
+                <line key={`light-${i}`}
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke="rgba(255,255,255,0.72)"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeDasharray={`8 ${Math.max(len + 20, 60)}`}
+                  style={{
+                    animation: `travelLight ${item.duration}s linear infinite`,
+                    animationDelay: `${item.delay}s`,
+                  }}
+                />
               );
             })}
 

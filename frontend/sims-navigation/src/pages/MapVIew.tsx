@@ -3,6 +3,7 @@ import {
   useState,
   useEffect,
   useRef,
+  useCallback,
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import gsap from "gsap";
@@ -67,6 +68,10 @@ const MapView = () => {
   
   const originId = destinations[rawOrigin || ""] || rawOrigin;
   const destId = destinations[rawDest || ""] || rawDest;
+
+  // overrideOriginId: set when user re-pins during navigation — re-routes from new position
+  const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
+  const effectiveOriginId = overrideOriginId ?? originId;
   
   const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, [typedTestData]);
 
@@ -80,12 +85,12 @@ const MapView = () => {
       .filter((i): i is { name: string; x: number; y: number; id: string; pic: string } => i !== null);
   }, [destinations, nodeMap, typedTestData]);
 
-  const startNode = useMemo(() => nodeMap[originId || ""] || { x: 785, y: 924 }, [originId, nodeMap]);
+  const startNode = useMemo(() => nodeMap[effectiveOriginId || ""] || { x: 785, y: 924 }, [effectiveOriginId, nodeMap]);
 
   const routePath = useMemo(() => {
-    if (!originId || !destId) return [];
-    return findShortestPath(originId, destId, nodeMap, typedTestData.edges);
-  }, [originId, destId, nodeMap, typedTestData.edges]);
+    if (!effectiveOriginId || !destId) return [];
+    return findShortestPath(effectiveOriginId, destId, nodeMap, typedTestData.edges);
+  }, [effectiveOriginId, destId, nodeMap, typedTestData.edges]);
 
   const routePoints = useMemo(() => routePath.map((id) => nodeMap[id]).filter(Boolean), [routePath, nodeMap]);
 
@@ -100,6 +105,8 @@ const MapView = () => {
   const shownDestinations = useRef<Set<string>>(new Set());
   const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
   const [isRecalibrating, setIsRecalibrating] = useState(false);
+  const [isRepinning, setIsRepinning] = useState(false);
+  const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
 
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
@@ -165,6 +172,65 @@ const MapView = () => {
       forceSetPos(targetNode.x, targetNode.y);
       setIsRecalibrating(false);
     }
+  };
+
+  // --- Re-pin: find nearest node to the current viewport center (SVG coords) ---
+  const evaluateRepinPos = useCallback(() => {
+    if (!viewportRef.current) return;
+    const vp = viewportRef.current;
+    const { x: camX, y: camY, zoom } = camState.current;
+    // Viewport center in SVG space
+    const svgCx = (vp.clientWidth  / 2 - camX) / zoom;
+    const svgCy = (vp.clientHeight / 2 - camY) / zoom;
+
+    const entries = Object.entries(nodeMap);
+    if (!entries.length) return;
+
+    const best = entries.reduce<{id:string; x:number; y:number; dist:number}>(
+      (acc, [id, node]) => {
+        const d = Math.hypot(node.x - svgCx, node.y - svgCy);
+        return d < acc.dist ? { id, x: node.x, y: node.y, dist: d } : acc;
+      },
+      { id: entries[0][0], x: entries[0][1].x, y: entries[0][1].y,
+        dist: Math.hypot(entries[0][1].x - svgCx, entries[0][1].y - svgCy) }
+    );
+
+    // Find human name for this node
+    const destName = Object.entries(typedTestData.destinations)
+      .find(([, v]) => v.node === best.id)?.[0] || best.id;
+
+    setRepinNearest({ ...best, name: destName });
+  }, [nodeMap, typedTestData.destinations]);
+
+  const repinEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedRepinEval = useCallback(() => {
+    if (repinEvalTimer.current) clearTimeout(repinEvalTimer.current);
+    repinEvalTimer.current = setTimeout(evaluateRepinPos, 80);
+  }, [evaluateRepinPos]);
+
+  const handleRepinConfirm = () => {
+    if (!repinNearest) return;
+    // Move the PDR tracker to the new physical position
+    forceSetPos(repinNearest.x, repinNearest.y);
+    // Re-route from the newly pinned node to the same destination
+    setOverrideOriginId(repinNearest.id);
+    // Clear navigation history so route re-renders cleanly
+    setActualPath([]);
+    checkedTurns.current.clear();
+    setIsRepinning(false);
+    setRepinNearest(null);
+    setAutoFollow(true);
+  };
+
+  const startRepinMode = () => {
+    setIsRepinning(true);
+    setAutoFollow(false);
+    gsap.killTweensOf(cameraLayerRef.current);
+    // Capture live positions
+    camState.current.x = gsap.getProperty(cameraLayerRef.current, 'x') as number;
+    camState.current.y = gsap.getProperty(cameraLayerRef.current, 'y') as number;
+    // Evaluate immediately
+    setTimeout(evaluateRepinPos, 100);
   };
 
   const handleNextStep = () => {
@@ -429,6 +495,7 @@ const MapView = () => {
       camState.current.x = c.x;
       camState.current.y = c.y;
       lastPointer.current = { x: e.clientX, y: e.clientY };
+      if (isRepinning) debouncedRepinEval(); // live-evaluate while user pans in repin mode
     }
   };
 
@@ -500,7 +567,148 @@ const MapView = () => {
         </div>
       </div>
 
-      {isNavActive && navState.turnType !== "straight" && (
+      {/* ── Lost? floating button during active navigation ── */}
+      {isNavActive && !isRepinning && (
+        <button
+          onClick={startRepinMode}
+          style={{
+            position: 'absolute', right: 20, top: 140,
+            width: 50, height: 50, borderRadius: '50%',
+            background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+            border: 'none', boxShadow: '0 2px 12px rgba(245,158,11,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 500, cursor: 'pointer', flexDirection: 'column',
+          }}
+          title="Pin my location"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+            <circle cx="12" cy="9" r="2.5"/>
+          </svg>
+          <span style={{ fontSize: 8, color: 'white', fontWeight: 700, marginTop: 1 }}>LOST?</span>
+        </button>
+      )}
+
+      {/* ── Re-pin overlay: fixed center crosshair on the live map ── */}
+      {isRepinning && (
+        <>
+          {/* Dimmed top hint bar */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 600,
+            background: 'rgba(15,23,42,0.88)',
+            padding: '14px 20px 10px',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <button
+              onClick={() => { setIsRepinning(false); setRepinNearest(null); }}
+              style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
+                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'white', fontSize: 16 }}
+            >✕</button>
+            <div>
+              <div style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>Pan map to your real position</div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>The pin will snap to the nearest corridor</div>
+            </div>
+          </div>
+
+          {/* Fixed center pin — always at screen center, on top of the live map */}
+          <div style={{
+            position: 'absolute', left: '50%', top: '50%',
+            transform: 'translate(-50%, -100%)',
+            pointerEvents: 'none', zIndex: 601,
+            transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+          }}>
+            <svg width="36" height="48" viewBox="0 0 36 48" fill="none">
+              <circle cx="18" cy="18" r="16"
+                fill={repinNearest && repinNearest.dist < 150 ? '#22c55e' : repinNearest && repinNearest.dist < 350 ? '#f59e0b' : '#ef4444'}
+                stroke="white" strokeWidth="3" />
+              <circle cx="18" cy="18" r="7" fill="white" opacity={0.8} />
+              <path d="M18 32 L18 48" stroke={repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'} strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          </div>
+
+          {/* Pulse ring at center */}
+          <div style={{
+            position: 'absolute', left: '50%', top: '50%',
+            transform: 'translate(-50%,-50%)',
+            pointerEvents: 'none', zIndex: 600,
+          }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%',
+              border: `2px solid ${repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'}`,
+              opacity: 0.3,
+              animation: 'repinPulse 2s ease-in-out infinite',
+            }} />
+          </div>
+
+          {/* Bottom confirm sheet */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 610,
+            background: 'rgba(15,23,42,0.97)',
+            borderRadius: '20px 20px 0 0',
+            padding: '20px 20px 36px',
+            boxShadow: '0 -4px 24px rgba(0,0,0,0.35)',
+          }}>
+            {/* Nearest location status */}
+            <div style={{
+              background: 'rgba(255,255,255,0.07)',
+              borderRadius: 12, padding: '12px 14px',
+              marginBottom: 16,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                background: repinNearest && repinNearest.dist < 150 ? '#22c55e' :
+                            repinNearest && repinNearest.dist < 350 ? '#f59e0b' : '#ef4444',
+                boxShadow: `0 0 6px ${repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'}`,
+              }} />
+              <div>
+                <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Nearest corridor: </span>
+                <span style={{ color: 'white', fontSize: 13, fontWeight: 600 }}>
+                  {repinNearest ? (repinNearest.name.length > 22 ? repinNearest.name.slice(0,21)+'…' : repinNearest.name) : 'Searching...'}
+                </span>
+              </div>
+            </div>
+
+            {repinNearest && repinNearest.dist > 350 && (
+              <div style={{
+                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: 10, padding: '10px 12px', marginBottom: 14,
+                color: '#fca5a5', fontSize: 12, lineHeight: 1.5,
+              }}>
+                Pin is far from any corridor. Pan closer to a hallway or scan a QR code nearby.
+              </div>
+            )}
+
+            <button
+              onClick={handleRepinConfirm}
+              disabled={!repinNearest || repinNearest.dist > 350}
+              style={{
+                width: '100%', padding: '15px', borderRadius: 14,
+                border: 'none',
+                background: repinNearest && repinNearest.dist <= 350
+                  ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                  : 'rgba(255,255,255,0.1)',
+                color: 'white', fontWeight: 700, fontSize: 15,
+                cursor: repinNearest && repinNearest.dist <= 350 ? 'pointer' : 'not-allowed',
+                transition: 'all 0.3s',
+                boxShadow: repinNearest && repinNearest.dist <= 350 ? '0 4px 16px rgba(34,197,94,0.4)' : 'none',
+              }}
+            >
+              📍 Yes, I'm here — Continue navigation
+            </button>
+          </div>
+
+          <style>{`
+            @keyframes repinPulse {
+              0%, 100% { transform: translate(-50%,-50%) scale(1); opacity: 0.3; }
+              50% { transform: translate(-50%,-50%) scale(1.7); opacity: 0.05; }
+            }
+          `}</style>
+        </>
+      )}
+
+      {isNavActive && navState.turnType !== "straight" && !isRepinning && (
         <div style={{ position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", background: "white", padding: "12px 24px", borderRadius: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 100, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: "#4285F4", display: "flex", alignItems: "center", justifyContent: "center" }}>
              {navState.turnType === "left" ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>}
