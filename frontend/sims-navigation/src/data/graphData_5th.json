@@ -1,0 +1,304 @@
+{
+  "meta": {
+    "building": "SIMS",
+    "floor": "5",
+    "floorName": "5th Floor",
+    "svg": "/5th_floor.svg"
+  },
+  "nodes": {
+    "node_001": {
+      "x": 485.2,
+      "y": 573,
+      "type": "path"
+    },
+    "node_002": {
+      "x": 592.2,
+      "y": 572,
+      "type": "path"
+    },
+    "node_003": {
+      "x": 648.2,
+      "y": 562,
+      "type": "path"
+    },
+    "node_004": {
+      "x": 672.2,
+      "y": 506,
+      "type": "path"
+    },
+    "node_005": {
+      "x": 654.2,
+      "y": 375,
+      "type": "path"
+    },
+    "node_006": {
+      "x": 416.2,
+      "y": 356,
+      "type": "path"
+    },
+    "node_007": {
+      "x": 396.2,
+      "y": 471,
+      "type": "path"
+    },
+    "node_008": {
+      "x": 409.2,
+      "y": 547,
+      "type": "path"
+    },
+    "node_009": {
+      "x": 391.2,
+      "y": 505,
+      "type": "path"
+    },
+    "node_010": {
+      "x": 323.2,
+      "y": 497,
+      "type": "path"
+    },
+    "node_011": {
+      "x": 273.2,
+      "y": 500,
+      "type": "path"
+    },
+    "node_012": {
+      "x": 216.2,
+      "y": 503,
+      "type": "path"
+    },
+    "node_013": {
+      "x": 163.2,
+      "y": 507,
+      "type": "path"
+    },
+    "node_014": {
+      "x": 120.2,
+      "y": 495,
+      "type": "path"
+    },
+    "node_015": {
+      "x": 121.2,
+      "y": 440,
+      "type": "path"
+    },
+    "node_016": {
+      "x": 102.2,
+      "y": 425,
+      "type": "path"
+    },
+    "node_017": {
+      "x": 525.2,
+      "y": 350,
+      "type": "path"
+    },
+    "node_018": {
+      "x": 524.2,
+      "y": 320,
+      "type": "path"
+    },
+    "node_019": {
+      "x": 659.2,
+      "y": 448,
+      "type": "path"
+    },
+    "node_020": {
+      "x": 698.2,
+      "y": 492,
+      "type": "path"
+    },
+    "node_021": {
+      "x": 746.2,
+      "y": 491,
+      "type": "path"
+    },
+    "node_022": {
+      "x": 785.2,
+      "y": 492,
+      "type": "path"
+    },
+    "node_023": {
+      "x": 809.2,
+      "y": 492,
+      "type": "path"
+    },
+    "node_024": {
+      "x": 854.2,
+      "y": 494,
+      "type": "path"
+    },
+    "node_025": {
+      "x": 886.2,
+      "y": 492,
+      "type": "path"
+    },
+    "node_026": {
+      "x": 899.2,
+      "y": 495,
+      "type": "path"
+    },
+    "node_027": {
+      "x": 893.2,
+      "y": 457,
+      "type": "destination"
+    },
+    "node_028": {
+      "x": 529.2,
+      "y": 549,
+      "type": "destination"
+    },
+    "node_029": {
+      "x": 64.2,
+      "y": 430,
+      "type": "destination"
+    },
+    "node_030": {
+      "x": 524.2,
+      "y": 293,
+      "type": "destination"
+    }
+  },
+  "edges": [
+    {
+      "from": "node_029",
+      "to": "node_016"
+    },
+    {
+      "from": "node_016",
+      "to": "node_015"
+    },
+    {
+      "from": "node_015",
+      "to": "node_014"
+    },
+    {
+      "from": "node_014",
+      "to": "node_013"
+    },
+    {
+      "from": "node_013",
+      "to": "node_012"
+    },
+    {
+      "from": "node_012",
+      "to": "node_011"
+    },
+    {
+      "from": "node_011",
+      "to": "node_010"
+    },
+    {
+      "from": "node_010",
+      "to": "node_007"
+    },
+    {
+      "from": "node_007",
+      "to": "node_009"
+    },
+    {
+      "from": "node_009",
+      "to": "node_008"
+    },
+    {
+      "from": "node_008",
+      "to": "node_001"
+    },
+    {
+      "from": "node_001",
+      "to": "node_002"
+    },
+    {
+      "from": "node_002",
+      "to": "node_028"
+    },
+    {
+      "from": "node_028",
+      "to": "node_001"
+    },
+    {
+      "from": "node_002",
+      "to": "node_003"
+    },
+    {
+      "from": "node_003",
+      "to": "node_004"
+    },
+    {
+      "from": "node_004",
+      "to": "node_019"
+    },
+    {
+      "from": "node_019",
+      "to": "node_005"
+    },
+    {
+      "from": "node_005",
+      "to": "node_017"
+    },
+    {
+      "from": "node_017",
+      "to": "node_018"
+    },
+    {
+      "from": "node_018",
+      "to": "node_030"
+    },
+    {
+      "from": "node_017",
+      "to": "node_006"
+    },
+    {
+      "from": "node_007",
+      "to": "node_006"
+    },
+    {
+      "from": "node_004",
+      "to": "node_020"
+    },
+    {
+      "from": "node_020",
+      "to": "node_021"
+    },
+    {
+      "from": "node_021",
+      "to": "node_022"
+    },
+    {
+      "from": "node_022",
+      "to": "node_023"
+    },
+    {
+      "from": "node_023",
+      "to": "node_024"
+    },
+    {
+      "from": "node_024",
+      "to": "node_025"
+    },
+    {
+      "from": "node_026",
+      "to": "node_025"
+    },
+    {
+      "from": "node_026",
+      "to": "node_027"
+    }
+  ],
+  "destinations": {
+    "5th room": {
+      "node": "node_029",
+      "pic": ""
+    },
+    "5th hall": {
+      "node": "node_030",
+      "pic": ""
+    },
+    "5th lift": {
+      "node": "node_028",
+      "pic": ""
+    },
+    "5th cr room": {
+      "node": "node_027",
+      "pic": ""
+    }
+  }
+}

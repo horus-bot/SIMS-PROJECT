@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, MapPin, Navigation, ArrowRight, X } from "lucide-react";
-import floorData from "../data/test_1.json";
 import VoiceToTextMic from "../components/Mic";
 
 import "./navigation.css";
@@ -9,6 +8,8 @@ import "./navigation.css";
 type Room = {
   id: string;
   name: string;
+  floorId: string;
+  floorName: string;
 };
 
 type IntentResponse = {
@@ -16,6 +17,16 @@ type IntentResponse = {
   origin_place: string | null;
   destination_place: string | null;
 };
+
+const dataModules = import.meta.glob('../data/*.json', { eager: true });
+const ALL_FLOOR_DATA = Object.entries(dataModules).map(([path, mod]) => {
+  const filename = path.split('/').pop()?.replace('.json', '');
+  let id = filename || 'unknown';
+  if (id === 'test_1') id = 'test';
+  else if (id === 'graphData_firstfloor') id = 'firstfloor';
+  else if (id === 'graphData4th') id = 'fourthfloor';
+  return { id, data: (mod as any).default || mod };
+});
 
 const NavigationPage = () => {
   const navigate = useNavigate();
@@ -28,19 +39,28 @@ const NavigationPage = () => {
     useState<"origin" | "destination" | null>(null);
   const [search, setSearch] = useState("");
 
-  // --- DATA (✅ updated for test_1.json "destination") ---
-const rooms: Room[] = useMemo(() => {
-  const destMap = (floorData as any)?.destinations;
-  if (!destMap) return [];
+  // --- DATA (✅ dynamically load from all floor data) ---
+  const rooms: Room[] = useMemo(() => {
+    const allRooms: Room[] = [];
+    
+    ALL_FLOOR_DATA.forEach(floor => {
+      const destMap = floor.data?.destinations;
+      if (destMap) {
+        Object.entries(destMap).forEach(([placeName, info]: any) => {
+          if (!allRooms.find(r => r.name === placeName)) {
+            allRooms.push({
+              id: info.node,
+              name: placeName,
+              floorId: floor.id,
+              floorName: floor.data?.meta?.floorName || "Main Block"
+            });
+          }
+        });
+      }
+    });
 
-  return Object.entries(destMap)
-    .map(([placeName, info]: any) => ({
-      id: info.node,     // node id
-      name: placeName,   // room name
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-}, []);
+    return allRooms.sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((r) =>
@@ -82,7 +102,8 @@ const rooms: Room[] = useMemo(() => {
 
   const startNavigation = () => {
     if (!origin || !destination) return;
-    navigate(`/map-view?origin=${origin.name}&dest=${destination.name}`);
+    // Map View expects origin, dest, and floor as names/ids. Using destination floor as primary route floor.
+    navigate(`/map-view?origin=${origin.name}&dest=${destination.name}&floor=${destination.floorId}`);
   };
 
   // Lock body scroll when modal is open
@@ -241,7 +262,7 @@ const rooms: Room[] = useMemo(() => {
                     </div>
                     <div className="room-info">
                       <h4>{room.name}</h4>
-                      <p>Floor 1 • Main Block</p>
+                      <p>{room.floorName}</p>
                     </div>
                   </button>
                 ))

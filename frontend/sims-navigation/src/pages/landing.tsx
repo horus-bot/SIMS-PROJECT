@@ -10,8 +10,21 @@ import { gsap } from "gsap";
 import Header from "../components/Header";
 import QRScanner from "../components/QRScanner";
 import Avatar from "../components/avatar";
-import floorData from "../data/test_1.json";
 import "./landing.css";
+
+const dataModules = import.meta.glob('../data/*.json', { eager: true });
+
+const ALL_FLOOR_DATA = Object.entries(dataModules).map(([path, mod]) => {
+  const filename = path.split('/').pop()?.replace('.json', '');
+  let id = filename || 'unknown';
+  
+  // Maintain backward compatibility with old IDs
+  if (id === 'test_1') id = 'test';
+  else if (id === 'graphData_firstfloor') id = 'firstfloor';
+  else if (id === 'graphData4th') id = 'fourthfloor';
+  
+  return { id, data: (mod as any).default || mod };
+});
 
 // Category Definitions
 const CATEGORIES = [
@@ -40,11 +53,20 @@ export default function Landing() {
   const mainCardRef = useRef<HTMLDivElement>(null);
 
   // --- DATA PROCESSING ---
-  const allDestinations = useMemo(() => {
-    const destMap = (floorData as any)?.destinations;
-    if (!destMap) return [];
-    return Object.keys(destMap).sort();
+  const allDestinationsWithFloor = useMemo(() => {
+    const combined: { name: string; floor: string }[] = [];
+    ALL_FLOOR_DATA.forEach(floor => {
+      const destMap = floor.data?.destinations;
+      if (destMap) {
+        Object.keys(destMap).forEach(name => {
+          combined.push({ name, floor: floor.id });
+        });
+      }
+    });
+    return combined.sort((a, b) => a.name.localeCompare(b.name));
   }, []);
+
+  const allDestinations = useMemo(() => allDestinationsWithFloor.map(d => d.name), [allDestinationsWithFloor]);
 
   const categorizedData = useMemo(() => {
     const results: Record<string, string[]> = { rooms: [], doctors: [], services: [], utilities: [], uncategorized: [] };
@@ -99,12 +121,16 @@ export default function Landing() {
       setActiveCategory(null);
       setActiveStep('destination');
     } else {
+      // Find floor for this destination
+      const destInfo = allDestinationsWithFloor.find(d => d.name === name);
+      const floor = destInfo ? destInfo.floor : "test";
+
       // Save to recent
       const updated = [name, ...recentDestinations.filter(d => d !== name)].slice(0, 5);
       setRecentDestinations(updated);
       localStorage.setItem("recent_destinations", JSON.stringify(updated));
       
-      navigate(`/map-view?origin=${encodeURIComponent(origin || "")}&dest=${encodeURIComponent(name)}`);
+      navigate(`/map-view?origin=${encodeURIComponent(origin || "")}&dest=${encodeURIComponent(name)}&floor=${floor}`);
     }
   };
 
@@ -207,15 +233,19 @@ export default function Landing() {
                     <button onClick={() => { setSearchQuery(""); setActiveCategory(null); }}>Clear</button>
                   </div>
                   <div className="results-list-v4">
-                    {filteredResults.map(item => (
-                      <button key={item} className="result-row-v4" onClick={() => handleSelectItem(item)}>
-                        <div className="r-info">
-                          <span className="r-name">{item}</span>
-                          <span className="r-meta">Floor 4 • Block B</span>
-                        </div>
-                        <ChevronRight size={16} />
-                      </button>
-                    ))}
+                    {filteredResults.map(item => {
+                      const destInfo = allDestinationsWithFloor.find(d => d.name === item);
+                      const floorName = ALL_FLOOR_DATA.find(f => f.id === destInfo?.floor)?.data?.meta?.floorName || "Unknown Floor";
+                      return (
+                        <button key={item} className="result-row-v4" onClick={() => handleSelectItem(item)}>
+                          <div className="r-info">
+                            <span className="r-name">{item}</span>
+                            <span className="r-meta">{floorName}</span>
+                          </div>
+                          <ChevronRight size={16} />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
