@@ -88,7 +88,7 @@ export default function Landing() {
     return combined.sort((a, b) => a.name.localeCompare(b.name));
   }, []);
 
-  const allDestinations = useMemo(() => allDestinationsWithFloor.map(d => d.name), [allDestinationsWithFloor]);
+  const allDestinations = useMemo(() => Array.from(new Set(allDestinationsWithFloor.map(d => d.name))), [allDestinationsWithFloor]);
 
   const categorizedData = useMemo(() => {
     const results: Record<string, string[]> = { rooms: [], doctors: [], services: [], utilities: [], uncategorized: [] };
