@@ -43,8 +43,6 @@ Object.entries(dataModules).forEach(([path, mod]) => {
   floors[id] = ((mod as any).default || mod) as TestData;
 });
 
-const MAP_W = 4101;
-const MAP_H = 3025;
 const FIXED_PITCH = 0;
 const MAX_INITIAL_ZOOM = 1.4;  // cap so map is never too close on load
 
@@ -74,6 +72,19 @@ const MapView = () => {
   const effectiveOriginId = overrideOriginId ?? originId;
   
   const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, [typedTestData]);
+
+  // Dynamically calculate the map boundaries based on the current floor's extreme node coordinates
+  // This prevents the map from having infinite empty scrolling space if the floor is smaller
+  const mapBounds = useMemo(() => {
+    let maxX = 0;
+    let maxY = 0;
+    Object.values(nodeMap).forEach((n) => {
+      if (typeof n.x === 'number' && n.x > maxX) maxX = n.x;
+      if (typeof n.y === 'number' && n.y > maxY) maxY = n.y;
+    });
+    // Add 200px padding so boundary edges don't cut off immediate visuals
+    return { w: Math.max(maxX + 200, 800), h: Math.max(maxY + 200, 800) };
+  }, [nodeMap]);
 
   const destinationMarkers = useMemo(() => {
     return Object.entries(destinations)
@@ -382,6 +393,7 @@ const MapView = () => {
       camState.current = { x: camX, y: camY, zoom, bearing: 0 };
     } else {
       // No route: fit entire map to screen at a comfortable level
+      const { w: MAP_W, h: MAP_H } = mapBounds;
       const zFit = Math.min(vpW / MAP_W, vpH / MAP_H);
       const z = Math.min(zFit * 1.1, MAX_INITIAL_ZOOM);
       camState.current = { x: 0, y: 0, zoom: z, bearing: 0 };
@@ -416,6 +428,7 @@ const MapView = () => {
     if (!vp) return { x: nx, y: ny, z: nz };
     const vpW = vp.clientWidth;
     const vpH = vp.clientHeight;
+    const { w: MAP_W, h: MAP_H } = mapBounds;
     const minZoom = Math.max(vpW / MAP_W, vpH / MAP_H);
     let z = Math.max(nz, minZoom);
     const maxZoom = 8;
@@ -490,7 +503,8 @@ const MapView = () => {
       const dy = e.clientY - lastPointer.current.y;
       const nx = camState.current.x + dx;
       const ny = camState.current.y + dy;
-      const c = clampCamera(nx, ny, camState.current.zoom, snappedPos, 0.05);
+      // Removed focus clamping on pure pan to allow free movement across the map space
+      const c = clampCamera(nx, ny, camState.current.zoom);
       gsap.set(cameraLayerRef.current, { x: c.x, y: c.y });
       camState.current.x = c.x;
       camState.current.y = c.y;
@@ -517,7 +531,8 @@ const MapView = () => {
   const handleZoom = (dir: "in" | "out") => {
     setAutoFollow(false);
     const nz = dir === "in" ? camState.current.zoom * 1.35 : camState.current.zoom / 1.35;
-    const c = clampCamera(camState.current.x, camState.current.y, nz, snappedPos, 0.05);
+    // Allow zooming freely without snapping the center back to snappedPos
+    const c = clampCamera(camState.current.x, camState.current.y, nz);
     gsap.to(cameraLayerRef.current, { scale: c.z, x: c.x, y: c.y, duration: 0.4 });
     camState.current.zoom = c.z;
     camState.current.x = c.x;
@@ -527,7 +542,7 @@ const MapView = () => {
   if (!originId || !destId) return <div style={{ padding: 20, color: "#374151" }}>Invalid Route</div>;
 
   return (
-    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", overflow: "hidden", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", overflow: "hidden", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" }}>
       {isNavActive && (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, background: "rgba(0,0,0,0.05)", zIndex: 1000 }}>
           <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #4285F4, #34A853)" }} />

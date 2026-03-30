@@ -32,18 +32,18 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
     <div
       style={{
         position: "absolute",
-        bottom: "16px",
+        bottom: "max(24px, env(safe-area-inset-bottom, 24px))",
         left: "50%",
         transform: "translateX(-50%)",
-        width: "min(460px, calc(100% - 32px))",
+        width: "min(460px, calc(100% - 24px))",
         backgroundColor: "rgba(255,255,255,0.85)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
-        borderRadius: "28px",
-        padding: "20px",
+        borderRadius: "clamp(20px, 5vw, 28px)",
+        padding: "clamp(12px, 3.5vw, 20px)",
         display: "flex",
         flexDirection: "column",
-        gap: "16px",
+        gap: "clamp(10px, 2.5vw, 16px)",
         zIndex: 100,
         boxShadow: "0 12px 40px rgba(0,0,0,0.15)",
       }}
@@ -63,8 +63,8 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
                 <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Distance</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "2px" }}>
-                  <span style={{ fontSize: "28px", fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{Math.round(totalRem)}</span>
-                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#64748B" }}>m</span>
+                  <span style={{ fontSize: "clamp(20px, 6vw, 28px)", fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{Math.round(totalRem)}</span>
+                  <span style={{ fontSize: "clamp(12px, 3.5vw, 14px)", fontWeight: 700, color: "#64748B" }}>m</span>
                 </div>
               </div>
 
@@ -74,8 +74,8 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
                 <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Time</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "2px" }}>
-                  <span style={{ fontSize: "28px", fontWeight: 800, color: "#10B981", lineHeight: 1 }}>{timeRemainingMins}</span>
-                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#64748B" }}>min</span>
+                  <span style={{ fontSize: "clamp(20px, 6vw, 28px)", fontWeight: 800, color: "#10B981", lineHeight: 1 }}>{timeRemainingMins}</span>
+                  <span style={{ fontSize: "clamp(12px, 3.5vw, 14px)", fontWeight: 700, color: "#64748B" }}>min</span>
                 </div>
               </div>
 
@@ -85,8 +85,8 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
                 <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Speed</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "2px" }}>
-                  <span style={{ fontSize: "28px", fontWeight: 800, color: "#8B5CF6", lineHeight: 1 }}>{displaySpeed}</span>
-                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#64748B" }}>m/s</span>
+                  <span style={{ fontSize: "clamp(20px, 6vw, 28px)", fontWeight: 800, color: "#8B5CF6", lineHeight: 1 }}>{displaySpeed}</span>
+                  <span style={{ fontSize: "clamp(12px, 3.5vw, 14px)", fontWeight: 700, color: "#64748B" }}>m/s</span>
                 </div>
               </div>
 
@@ -136,10 +136,10 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
           onClick={isNavActive ? onStopNavigation : onStartNavigation}
           style={{
             flex: 1,
-            height: "48px",
+            height: "clamp(44px, 12vw, 48px)",
             borderRadius: "28px",
             border: "none",
-            fontSize: "16px",
+            fontSize: "clamp(14px, 4vw, 16px)",
             fontWeight: 600,
             cursor: "pointer",
             display: "flex",
