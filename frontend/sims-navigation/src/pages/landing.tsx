@@ -11,6 +11,8 @@ import Header from "../components/Header";
 import QRScanner from "../components/QRScanner";
 import Avatar from "../components/avatar";
 import PinPickupMap from "../components/PinPickupMap";
+import VoiceToTextMic from "../components/Mic";
+import { fuzzyScore } from "../utils/search";
 import "./landing.css";
 
 const dataModules = import.meta.glob('../data/*.json', { eager: true });
@@ -107,7 +109,13 @@ export default function Landing() {
   const filteredResults = useMemo(() => {
     let list = activeCategory ? categorizedData[activeCategory] : allDestinations;
     if (searchQuery) {
-      list = list.filter(d => d.toLowerCase().includes(searchQuery.toLowerCase()));
+      const scoredList = list.map(item => ({
+        name: item,
+        score: fuzzyScore(searchQuery, item)
+      })).filter(item => item.score > 0);
+      
+      scoredList.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+      return scoredList.map(item => item.name).slice(0, 15);
     }
     return list.slice(0, 15);
   }, [searchQuery, activeCategory, categorizedData, allDestinations]);
@@ -183,6 +191,45 @@ export default function Landing() {
   const clearOrigin = () => {
     setSearchParams({});
     setActiveStep('origin');
+  };
+
+  const handleVoiceIntent = (data: { intent: string; origin_place: string | null; destination_place: string | null }) => {
+    let newOrigin = origin;
+    let newDest = destination;
+
+    const findBestMatch = (query: string) => {
+      const scoredList = allDestinations.map(item => ({ name: item, score: fuzzyScore(query, item) })).filter(item => item.score > 0);
+      return scoredList.length > 0 ? scoredList.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))[0].name : null;
+    };
+
+    if (data.origin_place) {
+      const bestOrigin = findBestMatch(data.origin_place);
+      if (bestOrigin) newOrigin = bestOrigin;
+    }
+
+    if (data.destination_place) {
+      const bestDest = findBestMatch(data.destination_place);
+      if (bestDest) {
+        newDest = bestDest;
+        const updated = [bestDest, ...recentDestinations.filter(d => d !== bestDest)].slice(0, 5);
+        setRecentDestinations(updated);
+        localStorage.setItem("recent_destinations", JSON.stringify(updated));
+      }
+    }
+
+    if (newOrigin || newDest) {
+      if (newOrigin && newDest) {
+        const destInfo = allDestinationsWithFloor.find(d => d.name === newDest);
+        const floor = destInfo ? destInfo.floor : "test";
+        navigate(`/map-view?origin=${encodeURIComponent(newOrigin)}&dest=${encodeURIComponent(newDest)}&floor=${floor}`);
+      } else {
+        const params: Record<string, string> = {};
+        if (newOrigin) params.origin = newOrigin;
+        if (newDest) params.dest = newDest;
+        setSearchParams(params);
+        if (newOrigin) setActiveStep('destination');
+      }
+    }
   };
 
   return (
@@ -322,6 +369,16 @@ export default function Landing() {
                     <span>Find your position automatically</span>
                   </div>
                 </button>
+              </div>
+            )}
+
+            {/* AI Assistant Voice Input */}
+            {(!searchQuery && !activeCategory) && (
+              <div className="voice-assistant-section-v4" style={{ marginTop: 16 }}>
+                <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
+                  Or use AI Assistant
+                </div>
+                <VoiceToTextMic onIntent={handleVoiceIntent} />
               </div>
             )}
 

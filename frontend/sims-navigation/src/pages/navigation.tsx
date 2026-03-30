@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, MapPin, Navigation, ArrowRight, X, Map } from "lucide-react";
 import VoiceToTextMic from "../components/Mic";
 import PinPickupMap from "../components/PinPickupMap";
+import { fuzzyScore } from "../utils/search";
 
 import "./navigation.css";
 
@@ -65,9 +66,14 @@ const NavigationPage = () => {
   }, []);
 
   const filteredRooms = useMemo(() => {
-    return rooms.filter((r) =>
-      r.name.toLowerCase().includes(search.toLowerCase())
-    );
+    if (!search) return rooms;
+    const scoredRooms = rooms.map(r => ({
+      ...r,
+      score: fuzzyScore(search, r.name)
+    })).filter(r => r.score > 0);
+    
+    scoredRooms.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    return scoredRooms;
   }, [rooms, search]);
 
   const ready = Boolean(origin && destination);
@@ -211,20 +217,18 @@ const NavigationPage = () => {
               onIntent={(data: IntentResponse) => {
                 if (!rooms.length) return;
 
+                const findBestRoom = (query: string) => {
+                  const scoredRooms = rooms.map(r => ({ ...r, score: fuzzyScore(query, r.name) })).filter(r => r.score > 0);
+                  return scoredRooms.length > 0 ? scoredRooms.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))[0] : null;
+                };
+
                 if (data.origin_place) {
-                  const matchOrigin = rooms.find(
-                    (r) =>
-                      r.name.toLowerCase() === data.origin_place!.toLowerCase()
-                  );
+                  const matchOrigin = findBestRoom(data.origin_place);
                   if (matchOrigin) setOrigin(matchOrigin);
                 }
 
                 if (data.destination_place) {
-                  const matchDest = rooms.find(
-                    (r) =>
-                      r.name.toLowerCase() ===
-                      data.destination_place!.toLowerCase()
-                  );
+                  const matchDest = findBestRoom(data.destination_place);
                   if (matchDest) setDestination(matchDest);
                 }
               }}

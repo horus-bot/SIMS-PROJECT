@@ -16,8 +16,8 @@ interface PinPickupMapProps {
 }
 
 // --- Constants ---
-const SNAP_THRESHOLD_PX = 120;
-const WARN_THRESHOLD_PX = 300;
+const SNAP_THRESHOLD_PX = 60;
+const WARN_THRESHOLD_PX = 150;
 const INITIAL_ZOOM = 0.28;   // readable on most phones
 const MAX_ZOOM = 1.4;
 const MIN_ZOOM = 0.06;
