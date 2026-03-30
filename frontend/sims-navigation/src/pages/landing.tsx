@@ -151,8 +151,18 @@ export default function Landing() {
 
   // User wants to pin their exact location on the map instead
   const handlePinInstead = () => {
-    setLocationConfirmPending(null);
-    setFloorPickerOpen(true); // open floor picker first
+    if (locationConfirmPending) {
+      const destInfo = allDestinationsWithFloor.find(d => d.name === locationConfirmPending);
+      setLocationConfirmPending(null);
+      if (destInfo && destInfo.floor) {
+        setPinPickerFloorId(destInfo.floor);
+      } else {
+        setFloorPickerOpen(true);
+      }
+    } else {
+      setLocationConfirmPending(null);
+      setFloorPickerOpen(true);
+    }
   };
 
   // User chose a floor from the floor picker

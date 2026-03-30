@@ -51,34 +51,7 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
     return map;
   }, [floorData]);
 
-  // Pre-compute random animated edges (stable, computed once at mount)
-  const animatedEdges = React.useMemo(() => {
-    const edges = (floorData.edges || []) as Array<{from:string;to:string}>;
-    if (edges.length === 0) return [];
-    // Pick 6-8 random indices (deterministic via index math, no Math.random at render time)
-    const count = Math.min(8, Math.max(4, Math.floor(edges.length * 0.05) + 4));
-    const selected: Array<{
-      edge: {from:string;to:string};
-      reversed: boolean;
-      duration: number;
-      delay: number;
-    }> = [];
-    const step = Math.max(1, Math.floor(edges.length / count));
-    for (let i = 0; i < count && i * step < edges.length; i++) {
-      // Use prime-offset spread for visual variety
-      const idx = (i * step + i * 7) % edges.length;
-      selected.push({
-        edge: edges[idx],
-        // Direction: alternate reversed/normal irregularly
-        reversed: (i * 3 + 1) % 2 === 0,
-        // Duration: 7-13s range, each different
-        duration: 7 + (i * 1.7) % 6,
-        // Delay: 0-5s staggered
-        delay: (i * 0.9) % 5,
-      });
-    }
-    return selected;
-  }, [floorData.edges]);
+
 
   // Get viewport center in SVG coords (the point under the pin)
   const getPinSvgCoord = useCallback(() => {
@@ -299,7 +272,7 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
               `}</style>
             </defs>
 
-            {/* ── LAYER 1: All edges as faint corridor network (full map paths) ── */}
+            {/* ── All edges as static corridor network (full map paths) ── */}
             {floorData.edges && Array.isArray(floorData.edges) &&
               (floorData.edges as Array<{from:string;to:string}>).map((edge, i) => {
                 const fromNode = floorData.nodes[edge.from];
@@ -309,38 +282,13 @@ const PinPickupMap: React.FC<PinPickupMapProps> = ({ floorData, floorId, onConfi
                   <line key={`path-${i}`}
                     x1={fromNode.x} y1={fromNode.y}
                     x2={toNode.x}   y2={toNode.y}
-                    stroke="rgba(147,197,253,0.22)"
-                    strokeWidth={4}
+                    stroke="rgba(96, 165, 250, 0.4)"
+                    strokeWidth={5}
                     strokeLinecap="round"
                   />
                 );
               })
             }
-
-            {/* ── LAYER 2: Random slow travelling lights on selected edges only ── */}
-            {animatedEdges.map((item, i) => {
-              const fromNode = floorData.nodes[item.edge.from];
-              const toNode   = floorData.nodes[item.edge.to];
-              if (!fromNode || !toNode) return null;
-              const len = Math.hypot(toNode.x - fromNode.x, toNode.y - fromNode.y);
-              // Reversed direction: swap endpoints
-              const [x1,y1,x2,y2] = item.reversed
-                ? [toNode.x, toNode.y, fromNode.x, fromNode.y]
-                : [fromNode.x, fromNode.y, toNode.x, toNode.y];
-              return (
-                <line key={`light-${i}`}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke="rgba(255,255,255,0.72)"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeDasharray={`8 ${Math.max(len + 20, 60)}`}
-                  style={{
-                    animation: `travelLight ${item.duration}s linear infinite`,
-                    animationDelay: `${item.delay}s`,
-                  }}
-                />
-              );
-            })}
 
             {/* Destination labels only — no node dots */}
             {Object.entries(floorData.destinations).map(([name, info]) => {

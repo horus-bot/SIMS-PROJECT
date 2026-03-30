@@ -42,7 +42,10 @@ export function fuzzyScore(query: string, text: string): number {
       if (ld < bestLd) bestLd = ld;
     }
     
-    const threshold = qw.length <= 4 ? 1 : 2;
+    // Prevent digits like "4203" from matching "4101" just because they are close in Levenshtein
+    const isNumeric = /^\d+$/.test(qw);
+    const threshold = isNumeric ? 0 : (qw.length <= 4 ? 1 : 2);
+    
     if (bestLd <= threshold) {
       matches++;
       totalScore += (10 - bestLd); 
