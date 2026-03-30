@@ -350,6 +350,7 @@ const MapView = () => {
   const [autoFollow, setAutoFollow] = useState(true);
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const lastPinch = useRef<number | null>(null);
 
   useEffect(() => {
     if (!viewportRef.current || !cameraLayerRef.current || !map3DRef.current) return;
@@ -485,7 +486,6 @@ const MapView = () => {
   }, [snappedPos]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
     (e.target as Element).setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     setAutoFollow(false);
@@ -498,6 +498,51 @@ const MapView = () => {
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Handle pinch to zoom on mobile properly anchored to fingers
+    if (pointers.current.size === 2) {
+      const pts = Array.from(pointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (lastPinch.current !== null && lastPinch.current > 0) {
+        const ratio = dist / lastPinch.current;
+        let nz = camState.current.zoom * ratio;
+        
+        // Prevent zooming too far in or out (clamping done in clampCamera, but calculate targetX first)
+        
+        // Find pinch center in screen coordinates
+        const screenCx = (pts[0].x + pts[1].x) / 2;
+        const screenCy = (pts[0].y + pts[1].y) / 2;
+        
+        // Map screen center to SVG space
+        const svgCx = (screenCx - camState.current.x) / camState.current.zoom;
+        const svgCy = (screenCy - camState.current.y) / camState.current.zoom;
+        
+        // New camera position so SVG point remains exactly under fingers
+        const targetX = screenCx - (svgCx * nz);
+        const targetY = screenCy - (svgCy * nz);
+
+        // the clampCamera will automatically fix nz if bounds exceed map limits, 
+        // so we must recalculate target X/Y if nz gets modified by clamp!
+        const c = clampCamera(targetX, targetY, nz);
+        
+        // Recalculate if zoom boundary hit:
+        const finalX = screenCx - (svgCx * c.z);
+        const finalY = screenCy - (svgCy * c.z);
+        
+        // Re-clamp the translations strictly using the final bounded zoom!
+        const finalC = clampCamera(finalX, finalY, c.z);
+
+        gsap.set(cameraLayerRef.current, { scale: finalC.z, x: finalC.x, y: finalC.y });
+        camState.current.zoom = finalC.z;
+        camState.current.x = finalC.x;
+        camState.current.y = finalC.y;
+      }
+      lastPinch.current = dist;
+      return;
+    }
+
+    lastPinch.current = null;
+
     if (pointers.current.size === 1 && lastPointer.current) {
       const dx = e.clientX - lastPointer.current.x;
       const dy = e.clientY - lastPointer.current.y;
@@ -516,6 +561,13 @@ const MapView = () => {
   const handlePointerUp = (e: React.PointerEvent) => {
     (e.target as Element).releasePointerCapture(e.pointerId);
     pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 1) {
+      const p = Array.from(pointers.current.values())[0];
+      lastPointer.current = { x: p.x, y: p.y };
+    } else {
+      lastPointer.current = null;
+    }
+    lastPinch.current = null;
   };
 
   const handleRecenter = () => { 
@@ -560,8 +612,8 @@ const MapView = () => {
       )}
 
       <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div ref={viewportRef} style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden" }}
-          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp}>
+        <div ref={viewportRef} style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden", touchAction: "none" }}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
           <div ref={map3DRef} style={{ width: "100%", height: "100%" }}>
             <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0" }}>
               <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
