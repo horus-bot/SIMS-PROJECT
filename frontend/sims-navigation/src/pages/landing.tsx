@@ -4,12 +4,13 @@ import {
   Search, MapPin, QrCode, X, 
   Stethoscope, Bed, Activity, Coffee, 
   ChevronRight, History, Info, 
-  Circle
+  Circle, Map
 } from "lucide-react";
 import { gsap } from "gsap";
 import Header from "../components/Header";
 import QRScanner from "../components/QRScanner";
 import Avatar from "../components/avatar";
+import PinPickupMap from "../components/PinPickupMap";
 import "./landing.css";
 
 const dataModules = import.meta.glob('../data/*.json', { eager: true });
@@ -44,6 +45,25 @@ export default function Landing() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [recentDestinations, setRecentDestinations] = useState<string[]>([]);
+
+  // --- PIN PICKUP STATE ---
+  // Holds the scanned/typed name while we wait for user location confirmation
+  const [locationConfirmPending, setLocationConfirmPending] = useState<string | null>(null);
+  // Floor picker for map-pin feature
+  const [floorPickerOpen, setFloorPickerOpen] = useState(false);
+  // Which floor the PinPickupMap shows
+  const [pinPickerFloorId, setPinPickerFloorId] = useState<string | null>(null);
+
+  // Derived: the floor data for map-pin
+  const pinPickerFloorData = useMemo(() => {
+    if (!pinPickerFloorId) return null;
+    return ALL_FLOOR_DATA.find(f => f.id === pinPickerFloorId)?.data || null;
+  }, [pinPickerFloorId]);
+
+  // Only show floors that have a real svg in meta
+  const availableFloors = useMemo(() =>
+    ALL_FLOOR_DATA.filter(f => f.data?.meta?.floorName && f.data?.meta?.svg),
+  []);
   
   const origin = searchParams.get("origin");
   const destination = searchParams.get("dest");
@@ -108,18 +128,44 @@ export default function Landing() {
   }, [origin, destination]);
 
   // --- HANDLERS ---
+  // QR scan result — show location confirmation sheet instead of jumping straight to dest
   const handleQrScan = (result: string) => {
-    setSearchParams({ origin: result });
     setIsScannerOpen(false);
+    setLocationConfirmPending(result); // show confirm sheet
+  };
+
+  // User confirmed they are at the QR/typed location
+  const handleConfirmLocation = (name: string) => {
+    setSearchParams({ origin: name });
+    setLocationConfirmPending(null);
+    setActiveStep('destination');
+  };
+
+  // User wants to pin their exact location on the map instead
+  const handlePinInstead = () => {
+    setLocationConfirmPending(null);
+    setFloorPickerOpen(true); // open floor picker first
+  };
+
+  // User chose a floor from the floor picker
+  const handleFloorChosen = (floorId: string) => {
+    setFloorPickerOpen(false);
+    setPinPickerFloorId(floorId);
+  };
+
+  // User confirmed pin position on the map
+  const handlePinConfirm = (_nodeId: string, nodeName: string) => {
+    setSearchParams({ origin: nodeName });
+    setPinPickerFloorId(null);
     setActiveStep('destination');
   };
 
   const handleSelectItem = (name: string) => {
     if (activeStep === 'origin') {
-      setSearchParams({ origin: name });
+      // Show location confirmation sheet — don't jump straight
       setSearchQuery("");
       setActiveCategory(null);
-      setActiveStep('destination');
+      setLocationConfirmPending(name);
     } else {
       // Find floor for this destination
       const destInfo = allDestinationsWithFloor.find(d => d.name === name);
@@ -192,11 +238,25 @@ export default function Landing() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                {activeStep === 'origin' && !searchQuery && (
-                  <button className="scan-trigger-btn" onClick={() => setIsScannerOpen(true)}>
+              {activeStep === 'origin' && !searchQuery && (
+                <>
+                  <button
+                    className="scan-trigger-btn"
+                    onClick={() => setIsScannerOpen(true)}
+                    title="Scan QR Code"
+                  >
                     <QrCode size={18} />
                   </button>
-                )}
+                  <button
+                    className="scan-trigger-btn"
+                    onClick={() => setFloorPickerOpen(true)}
+                    title="Pin my location on map"
+                    style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', color: 'white', marginLeft: 4, borderRadius: 10 }}
+                  >
+                    <Map size={16} />
+                  </button>
+                </>
+              )}
                 {searchQuery && <X size={18} className="c-icon" onClick={() => setSearchQuery("")} />}
               </div>
 
@@ -282,6 +342,143 @@ export default function Landing() {
             onClose={() => setIsScannerOpen(false)}
           />
         </div>
+      )}
+
+      {/* ── Location Confirmation Sheet ── */}
+      {locationConfirmPending && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1500,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'flex-end',
+        }} onClick={() => setLocationConfirmPending(null)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', background: 'white',
+              borderRadius: '24px 24px 0 0',
+              padding: '28px 24px 40px',
+              boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 24px' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <MapPin size={20} color="white" fill="white" />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 17, color: '#1e293b' }}>Are you here?</div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Detected location:</div>
+              </div>
+            </div>
+            <div style={{
+              background: '#f1f5f9', borderRadius: 14, padding: '14px 16px',
+              margin: '16px 0 24px', fontWeight: 600, fontSize: 15, color: '#1e293b',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <Circle size={10} fill="#3b82f6" stroke="#3b82f6" />
+              {locationConfirmPending}
+            </div>
+            <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6, margin: '0 0 24px' }}>
+              Confirm this as your starting point, or pin your exact position on the floor map.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button
+                onClick={() => handleConfirmLocation(locationConfirmPending)}
+                style={{
+                  padding: '16px', borderRadius: 16, border: 'none',
+                  background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
+                  color: 'white', fontWeight: 700, fontSize: 16, cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(59,130,246,0.4)',
+                }}
+              >
+                ✅ Yes, I'm standing here — Start Navigation
+              </button>
+              <button
+                onClick={handlePinInstead}
+                style={{
+                  padding: '14px', borderRadius: 16,
+                  border: '1.5px solid #e2e8f0',
+                  background: 'white', color: '#374151', fontWeight: 600,
+                  fontSize: 15, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Map size={18} color="#6366f1" /> Pin my exact location on the map
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Floor Picker Sheet ── */}
+      {floorPickerOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1500,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'flex-end',
+        }} onClick={() => setFloorPickerOpen(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', background: 'white',
+              borderRadius: '24px 24px 0 0',
+              padding: '28px 24px 40px',
+              boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 20px' }} />
+            <h3 style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 18, color: '#1e293b' }}>Select Floor</h3>
+            <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: 13 }}>Choose the floor you are currently on</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {availableFloors.map(floor => (
+                <button
+                  key={floor.id}
+                  onClick={() => handleFloorChosen(floor.id)}
+                  style={{
+                    padding: '16px 20px', borderRadius: 14,
+                    border: '1.5px solid #e2e8f0',
+                    background: 'white', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    textAlign: 'left', transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 12,
+                    background: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <Map size={18} color="white" />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 15, color: '#1e293b' }}>
+                      {floor.data?.meta?.floorName || floor.id}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      {Object.keys(floor.data?.nodes || {}).length} nodes · {Object.keys(floor.data?.destinations || {}).length} destinations
+                    </div>
+                  </div>
+                  <ChevronRight size={18} color="#9ca3af" style={{ marginLeft: 'auto' }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pin Pickup Map (full screen) ── */}
+      {pinPickerFloorId && pinPickerFloorData && (
+        <PinPickupMap
+          floorData={pinPickerFloorData}
+          floorId={pinPickerFloorId}
+          onConfirm={handlePinConfirm}
+          onClose={() => setPinPickerFloorId(null)}
+        />
       )}
     </div>
   );

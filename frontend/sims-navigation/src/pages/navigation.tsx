@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, MapPin, Navigation, ArrowRight, X } from "lucide-react";
+import { Search, MapPin, Navigation, ArrowRight, X, Map } from "lucide-react";
 import VoiceToTextMic from "../components/Mic";
+import PinPickupMap from "../components/PinPickupMap";
 
 import "./navigation.css";
 
@@ -38,6 +39,7 @@ const NavigationPage = () => {
   const [activePicker, setActivePicker] =
     useState<"origin" | "destination" | null>(null);
   const [search, setSearch] = useState("");
+  const [pinPickerFloor, setPinPickerFloor] = useState<string | null>(null);
 
   // --- DATA (✅ dynamically load from all floor data) ---
   const rooms: Room[] = useMemo(() => {
@@ -102,8 +104,27 @@ const NavigationPage = () => {
 
   const startNavigation = () => {
     if (!origin || !destination) return;
-    // Map View expects origin, dest, and floor as names/ids. Using destination floor as primary route floor.
-    navigate(`/map-view?origin=${origin.name}&dest=${destination.name}&floor=${destination.floorId}`);
+    navigate(`/map-view?origin=${encodeURIComponent(origin.name)}&dest=${encodeURIComponent(destination.name)}&floor=${destination.floorId}`);
+  };
+
+  // Compute floor data for the map picker — use destination floor if chosen, else first available floor
+  const pinPickerFloorData = useMemo(() => {
+    const floorId = pinPickerFloor || destination?.floorId || ALL_FLOOR_DATA[0]?.id;
+    const entry = ALL_FLOOR_DATA.find(f => f.id === floorId);
+    return { floorId: floorId || '', data: entry?.data || null };
+  }, [pinPickerFloor, destination]);
+
+  const handlePinConfirm = (nodeId: string, nodeName: string) => {
+    // Create a synthetic room entry from the confirmed node
+    const floorEntry = ALL_FLOOR_DATA.find(f => f.id === pinPickerFloorData.floorId);
+    const syntheticOrigin: Room = {
+      id: nodeId,
+      name: nodeName,
+      floorId: pinPickerFloorData.floorId,
+      floorName: floorEntry?.data?.meta?.floorName || 'Selected Location',
+    };
+    setOrigin(syntheticOrigin);
+    setPinPickerFloor(null);
   };
 
   // Lock body scroll when modal is open
@@ -131,15 +152,32 @@ const NavigationPage = () => {
           {/* Origin */}
           <div>
             <label className="input-label">Start Point</label>
-            <button
-              className="fake-input-btn"
-              onClick={() => openPicker("origin")}
-            >
-              <Search className="input-icon" />
-              <span className={`input-text ${origin ? "filled" : "placeholder"}`}>
-                {origin ? origin.name : "Search start location"}
-              </span>
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="fake-input-btn"
+                style={{ flex: 1 }}
+                onClick={() => openPicker("origin")}
+              >
+                <Search className="input-icon" />
+                <span className={`input-text ${origin ? "filled" : "placeholder"}`}>
+                  {origin ? origin.name : "Search start location"}
+                </span>
+              </button>
+              <button
+                title="Set my location on map"
+                onClick={() => setPinPickerFloor(destination?.floorId || ALL_FLOOR_DATA[0]?.id || 'test')}
+                style={{
+                  flexShrink: 0, width: 48, height: 48,
+                  borderRadius: 14,
+                  background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                  border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
+                }}
+              >
+                <Map size={20} color="white" />
+              </button>
+            </div>
           </div>
 
           {/* Divider */}
@@ -280,6 +318,16 @@ const NavigationPage = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Pin Pickup Map Overlay ── */}
+      {pinPickerFloor && pinPickerFloorData.data && (
+        <PinPickupMap
+          floorData={pinPickerFloorData.data}
+          floorId={pinPickerFloorData.floorId}
+          onConfirm={handlePinConfirm}
+          onClose={() => setPinPickerFloor(null)}
+        />
       )}
     </div>
   );

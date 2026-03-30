@@ -44,8 +44,8 @@ Object.entries(dataModules).forEach(([path, mod]) => {
 
 const MAP_W = 4101;
 const MAP_H = 3025;
-const FIXED_PITCH = 0; 
-const ZOOM_MULT = 4.3;
+const FIXED_PITCH = 0;
+const MAX_INITIAL_ZOOM = 1.4;  // cap so map is never too close on load
 
 const MapView = () => {
   const [searchParams] = useSearchParams();
@@ -276,7 +276,11 @@ const MapView = () => {
 
   useEffect(() => {
     if (!viewportRef.current || !cameraLayerRef.current || !map3DRef.current) return;
-    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, duration: 1.2, ease: "power2.out" });
+    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, duration: 1.0, ease: "power2.out" });
+
+    const vp = viewportRef.current;
+    const vpW = vp.clientWidth;
+    const vpH = vp.clientHeight;
 
     if (routePoints.length > 0) {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -286,26 +290,34 @@ const MapView = () => {
         if (p.y < minY) minY = p.y;
         if (p.y > maxY) maxY = p.y;
       });
-      const padding = 120;
+
+      // Generous padding so the entire route fits with breathing room
+      const padding = Math.max(vpW, vpH) * 0.18;
       minX -= padding; maxX += padding;
       minY -= padding; maxY += padding;
       const routeW = maxX - minX;
       const routeH = maxY - minY;
-      const vp = viewportRef.current;
-      const vpW = vp.clientWidth;
-      const vpH = vp.clientHeight;
-      const zoomX = vpW / Math.max(routeW, 1);
-      const zoomY = vpH / Math.max(routeH, 1);
-      const zoom = Math.min(zoomX, zoomY) * ZOOM_MULT;
+
+      // Fit-to-viewport zoom WITHOUT any multiplier, then cap
+      const zoomFit = Math.min(vpW / Math.max(routeW, 1), vpH / Math.max(routeH, 1));
+      const zoom = Math.min(zoomFit, MAX_INITIAL_ZOOM);
+
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
       const camX = vpW / 2 - centerX * zoom;
       const camY = vpH / 2 - centerY * zoom;
+
+      // Pre-position camera (no animation) then animate scale in for smooth entry
+      gsap.set(cameraLayerRef.current, { x: camX, y: camY, scale: zoom * 0.85 });
+      gsap.to(cameraLayerRef.current, {
+        scale: zoom, duration: 0.9, ease: "power3.out", delay: 0.1,
+      });
+
       camState.current = { x: camX, y: camY, zoom, bearing: 0 };
-      gsap.to(cameraLayerRef.current, { x: camX, y: camY, scale: zoom, duration: 0.8, ease: "power2.out" });
     } else {
-      const vp = viewportRef.current;
-      const z = Math.max(vp.clientWidth / MAP_W, vp.clientHeight / MAP_H) * ZOOM_MULT;
+      // No route: fit entire map to screen at a comfortable level
+      const zFit = Math.min(vpW / MAP_W, vpH / MAP_H);
+      const z = Math.min(zFit * 1.1, MAX_INITIAL_ZOOM);
       camState.current = { x: 0, y: 0, zoom: z, bearing: 0 };
       gsap.set(cameraLayerRef.current, { x: 0, y: 0, scale: z });
     }
