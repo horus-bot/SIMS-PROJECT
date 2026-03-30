@@ -276,7 +276,7 @@ const MapView = () => {
 
   useEffect(() => {
     if (!viewportRef.current || !cameraLayerRef.current || !map3DRef.current) return;
-    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateZ: 0, rotateY: 0, duration: 1.2, ease: "power2.out" });
+    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, duration: 1.2, ease: "power2.out" });
 
     if (routePoints.length > 0) {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -318,10 +318,20 @@ const MapView = () => {
     const tx = vp.clientWidth / 2 - snappedPos.x * zoom;
     const ty = vp.clientHeight / 2 - snappedPos.y * zoom;
     gsap.to(cameraLayerRef.current, {
-      x: tx, y: ty, duration: 0.5, ease: "power3.out",
+      x: tx, y: ty, duration: 0.5, ease: "power3.out", override: "auto",
       onComplete: () => { camState.current.x = tx; camState.current.y = ty; },
     });
   }, [snappedPos, autoFollow]);
+
+  useEffect(() => {
+    if (!autoFollow || !map3DRef.current) return;
+    gsap.to(map3DRef.current, {
+       rotateZ: -heading,
+       duration: 0.4,
+       ease: "none",
+       overwrite: "auto"
+    });
+  }, [heading, autoFollow]);
 
   const clampCamera = (nx: number, ny: number, nz: number, focus?: { x: number; y: number }, marginPercent = 0.05) => {
     const vp = viewportRef.current;
@@ -332,10 +342,14 @@ const MapView = () => {
     let z = Math.max(nz, minZoom);
     const maxZoom = 8;
     while ((MAP_W * z < vpW || MAP_H * z < vpH) && z < maxZoom) z = Math.min(maxZoom, z * 1.1);
-    const minX = vpW - MAP_W * z;
-    const maxX = 0;
-    const minY = vpH - MAP_H * z;
-    const maxY = 0;
+    
+    // Add generous padding bounds (min 600px) so map doesn't stick hard to viewport corners
+    const paddingLimit = Math.max(vpW * 0.4, 600);
+    const minX = vpW - MAP_W * z - paddingLimit;
+    const maxX = paddingLimit;
+    const minY = vpH - MAP_H * z - paddingLimit;
+    const maxY = paddingLimit;
+
     let rx = nx;
     if (minX > maxX) rx = (vpW - MAP_W * z) / 2;
     else rx = Math.min(maxX, Math.max(minX, nx));
@@ -357,7 +371,8 @@ const MapView = () => {
   };
 
   useEffect(() => {
-    if (!viewportRef.current || !cameraLayerRef.current || pointers.current.size > 0) return;
+    // Only execute clamping buffer if the user manually panned (autoFollow is false)
+    if (autoFollow || !viewportRef.current || !cameraLayerRef.current || pointers.current.size > 0) return;
     const vp = viewportRef.current;
     const { zoom, x: curX, y: curY } = camState.current;
     const screenX = snappedPos.x * zoom + curX;
@@ -410,7 +425,16 @@ const MapView = () => {
     pointers.current.delete(e.pointerId);
   };
 
-  const handleRecenter = () => { setAutoFollow(true); gsap.to(map3DRef.current, { rotateZ: 0, rotateX: FIXED_PITCH, duration: 0.8 }); };
+  const handleRecenter = () => { 
+    setAutoFollow(true); 
+    gsap.to(map3DRef.current, { rotateZ: -heading, rotateX: FIXED_PITCH, duration: 0.8 }); 
+    const vp = viewportRef.current;
+    if (vp) {
+      const tx = vp.clientWidth / 2 - snappedPos.x * camState.current.zoom;
+      const ty = vp.clientHeight / 2 - snappedPos.y * camState.current.zoom;
+      gsap.to(cameraLayerRef.current, { x: tx, y: ty, duration: 0.8, ease: "power3.out" });
+    }
+  };
   const handleZoom = (dir: "in" | "out") => {
     setAutoFollow(false);
     const nz = dir === "in" ? camState.current.zoom * 1.35 : camState.current.zoom / 1.35;
