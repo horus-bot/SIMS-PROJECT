@@ -30,14 +30,15 @@ interface MapData {
 }
 
 const Test: React.FC = () => {
-  const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five' | 'firstfloor' | '5th'>('4th');
+  const [selectedMap, setSelectedMap] = useState<'4th' | 'first' | 'five' | 'firstfloor' | '5th' | 'groundfloor'>('4th');
 
   const maps: Record<string, { label: string; svg: string; data: any }> = {
     '4th': { label: '4th Floor', svg: '/SIMS_MAP_fourth_3200D_line.svg', data: initialData },
     'first': { label: 'First OG', svg: '/SIMS_MAP_FIRST_OG.svg', data: templateData },
     'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData },
     'firstfloor': { label: 'First Floor', svg: '/firstfloor.svg', data: firstfloorData },
-    '5th': { label: '5th Floor', svg: '/5th_floor.svg', data: fifthFloorData }
+    '5th': { label: '5th Floor', svg: '/5th_floor.svg', data: fifthFloorData },
+    'groundfloor': { label: 'Ground Floor', svg: '/groundfloor.svg', data: templateData }
   };
 
   const [mapData, setMapData] = useState<MapData>(() => {
@@ -682,6 +683,8 @@ const Test: React.FC = () => {
         ? 'graphData_five.json'
         : selectedMap === '5th'
         ? 'graphData_5th.json'
+        : selectedMap === 'groundfloor'
+        ? 'graphData_ground.json'
         : 'graphData_firstfloor.json';
 
     link.download = filename;
@@ -735,6 +738,7 @@ const Test: React.FC = () => {
             <option value="five">Fifth OG</option>
             <option value="firstfloor">First Floor</option>
             <option value="5th">5th Floor</option>
+            <option value="groundfloor">Ground Floor</option>
           </select>
 
           <div style={{ display: 'flex', gap: '8px', borderLeft: '1px solid #e5e7eb', paddingLeft: '16px', marginRight: '8px' }}>
