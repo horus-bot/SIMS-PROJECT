@@ -15,6 +15,14 @@ import VoiceToTextMic from "../components/Mic";
 import { fuzzyScore } from "../utils/search";
 import "./landing.css";
 
+type SearchResultItem = {
+  name: string;
+  score: number;
+  floorId: string;
+  floorName: string;
+  category: string;
+};
+
 const dataModules = import.meta.glob('../data/*.json', { eager: true });
 
 const ALL_FLOOR_DATA = Object.entries(dataModules).map(([path, mod]) => {
@@ -49,8 +57,6 @@ export default function Landing() {
   const [recentDestinations, setRecentDestinations] = useState<string[]>([]);
 
   // --- PIN PICKUP STATE ---
-  // Holds the scanned/typed name while we wait for user location confirmation
-  const [locationConfirmPending, setLocationConfirmPending] = useState<string | null>(null);
   // Floor picker for map-pin feature
   const [floorPickerOpen, setFloorPickerOpen] = useState(false);
   // Which floor the PinPickupMap shows
@@ -73,6 +79,7 @@ export default function Landing() {
   // --- REFS ---
   const welcomeRef = useRef<HTMLDivElement>(null);
   const mainCardRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // --- DATA PROCESSING ---
   const allDestinationsWithFloor = useMemo(() => {
@@ -89,6 +96,11 @@ export default function Landing() {
   }, []);
 
   const allDestinations = useMemo(() => Array.from(new Set(allDestinationsWithFloor.map(d => d.name))), [allDestinationsWithFloor]);
+
+  const getCategoryForName = (name: string) => {
+    const found = CATEGORIES.find(cat => cat.pattern.test(name));
+    return found?.name || "Other";
+  };
 
   const categorizedData = useMemo(() => {
     const results: Record<string, string[]> = { rooms: [], doctors: [], services: [], utilities: [], uncategorized: [] };
@@ -107,18 +119,47 @@ export default function Landing() {
   }, [allDestinations]);
 
   const filteredResults = useMemo(() => {
-    let list = activeCategory ? categorizedData[activeCategory] : allDestinations;
-    if (searchQuery) {
-      const scoredList = list.map(item => ({
-        name: item,
-        score: fuzzyScore(searchQuery, item)
-      })).filter(item => item.score > 0);
-      
-      scoredList.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-      return scoredList.map(item => item.name).slice(0, 15);
+    const query = searchQuery.trim();
+    const list = activeCategory ? categorizedData[activeCategory] : allDestinations;
+
+    const buildResult = (name: string, score: number): SearchResultItem => {
+      const destInfo = allDestinationsWithFloor.find(d => d.name === name);
+      const floorId = destInfo?.floor || "test";
+      const floorName = ALL_FLOOR_DATA.find(f => f.id === floorId)?.data?.meta?.floorName || "Unknown Floor";
+      return {
+        name,
+        score,
+        floorId,
+        floorName,
+        category: getCategoryForName(name)
+      };
+    };
+
+    if (query) {
+      const queryLower = query.toLowerCase();
+      const scoredList = list
+        .map(name => {
+          const nameLower = name.toLowerCase();
+          let score = fuzzyScore(query, name);
+
+          if (nameLower === queryLower) score += 40;
+          else if (nameLower.startsWith(queryLower)) score += 20;
+          else if (nameLower.includes(queryLower)) score += 8;
+
+          return buildResult(name, score);
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+
+      return scoredList.slice(0, 20);
     }
-    return list.slice(0, 15);
-  }, [searchQuery, activeCategory, categorizedData, allDestinations]);
+
+    return list
+      .slice(0, 20)
+      .map(name => buildResult(name, 0));
+  }, [searchQuery, activeCategory, categorizedData, allDestinations, allDestinationsWithFloor]);
+
+  const topResult = filteredResults[0] || null;
 
   // --- EFFECTS ---
   useEffect(() => {
@@ -135,34 +176,20 @@ export default function Landing() {
     else if (!destination) setActiveStep('destination');
   }, [origin, destination]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [activeStep, origin, destination]);
+
   // --- HANDLERS ---
-  // QR scan result — show location confirmation sheet instead of jumping straight to dest
+  // QR scan result
   const handleQrScan = (result: string) => {
     setIsScannerOpen(false);
-    setLocationConfirmPending(result); // show confirm sheet
-  };
-
-  // User confirmed they are at the QR/typed location
-  const handleConfirmLocation = (name: string) => {
-    setSearchParams({ origin: name });
-    setLocationConfirmPending(null);
+    setSearchParams({ origin: result });
     setActiveStep('destination');
-  };
-
-  // User wants to pin their exact location on the map instead
-  const handlePinInstead = () => {
-    if (locationConfirmPending) {
-      const destInfo = allDestinationsWithFloor.find(d => d.name === locationConfirmPending);
-      setLocationConfirmPending(null);
-      if (destInfo && destInfo.floor) {
-        setPinPickerFloorId(destInfo.floor);
-      } else {
-        setFloorPickerOpen(true);
-      }
-    } else {
-      setLocationConfirmPending(null);
-      setFloorPickerOpen(true);
-    }
   };
 
   // User chose a floor from the floor picker
@@ -180,10 +207,11 @@ export default function Landing() {
 
   const handleSelectItem = (name: string) => {
     if (activeStep === 'origin') {
-      // Show location confirmation sheet — don't jump straight
+      // Directly set selected origin
       setSearchQuery("");
       setActiveCategory(null);
-      setLocationConfirmPending(name);
+      setSearchParams({ origin: name });
+      setActiveStep('destination');
     } else {
       // Find floor for this destination
       const destInfo = allDestinationsWithFloor.find(d => d.name === name);
@@ -196,6 +224,18 @@ export default function Landing() {
       
       navigate(`/map-view?origin=${encodeURIComponent(origin || "")}&dest=${encodeURIComponent(name)}&floor=${floor}`);
     }
+  };
+
+  const handleSearchAction = () => {
+    if (!searchQuery.trim() || !topResult) return;
+    handleSelectItem(topResult.name);
+  };
+
+  const handleClearEverything = () => {
+    setSearchParams({});
+    setSearchQuery("");
+    setActiveCategory(null);
+    setActiveStep('origin');
   };
 
   const clearOrigin = () => {
@@ -290,11 +330,26 @@ export default function Landing() {
               <div className="search-bar-v4">
                 <Search size={20} className="s-icon" />
                 <input 
+                  ref={searchInputRef}
                   type="text" 
                   placeholder={activeStep === 'origin' ? "Enter your current location..." : "Where do you want to go?"}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearchAction();
+                    }
+                  }}
                 />
+                <button
+                  className="search-action-btn"
+                  onClick={handleSearchAction}
+                  disabled={!searchQuery.trim() || !topResult}
+                  title={topResult ? `Go to ${topResult.name}` : 'Search'}
+                >
+                  <ChevronRight size={16} />
+                </button>
               {activeStep === 'origin' && !searchQuery && (
                 <>
                   <button
@@ -316,6 +371,27 @@ export default function Landing() {
               )}
                 {searchQuery && <X size={18} className="c-icon" onClick={() => setSearchQuery("")} />}
               </div>
+
+              <div className="search-help-row-v4">
+                <span>
+                  {activeStep === 'origin'
+                    ? 'Step 1: Set your current location'
+                    : 'Step 2: Pick your destination'}
+                </span>
+                {(origin || destination) && (
+                  <button className="reset-journey-btn-v4" onClick={handleClearEverything}>Reset</button>
+                )}
+              </div>
+
+              {searchQuery && topResult && (
+                <button className="top-match-cta-v4" onClick={handleSearchAction}>
+                  <div>
+                    <strong>Use top match: {topResult.name}</strong>
+                    <span>{topResult.floorName} • {topResult.category}</span>
+                  </div>
+                  <ChevronRight size={16} />
+                </button>
+              )}
 
               {!searchQuery && !activeCategory && (
                 <>
@@ -347,18 +423,26 @@ export default function Landing() {
                 <div className="results-container-v4">
                   <div className="results-header-v4">
                     <span>{activeCategory ? CATEGORIES.find(c => c.id === activeCategory)?.name : 'Suggested'}</span>
-                    <button onClick={() => { setSearchQuery(""); setActiveCategory(null); }}>Clear</button>
+                    <div className="results-actions-v4">
+                      <small>{filteredResults.length} shown</small>
+                      <button onClick={() => { setSearchQuery(""); setActiveCategory(null); }}>Clear</button>
+                    </div>
                   </div>
                   <div className="results-list-v4">
-                    {filteredResults.map(item => {
-                      const destInfo = allDestinationsWithFloor.find(d => d.name === item);
-                      const floorName = ALL_FLOOR_DATA.find(f => f.id === destInfo?.floor)?.data?.meta?.floorName || "Unknown Floor";
+                    {filteredResults.length === 0 && searchQuery && (
+                      <div className="empty-results-v4">
+                        <strong>No matches found</strong>
+                        <span>Try room number, doctor name, or service keyword.</span>
+                      </div>
+                    )}
+                    {filteredResults.map((item, idx) => {
                       return (
-                        <button key={item} className="result-row-v4" onClick={() => handleSelectItem(item)}>
+                        <button key={item.name} className="result-row-v4" onClick={() => handleSelectItem(item.name)}>
                           <div className="r-info">
-                            <span className="r-name">{item}</span>
-                            <span className="r-meta">{floorName}</span>
+                            <span className="r-name">{item.name}</span>
+                            <span className="r-meta">{item.floorName} • {item.category}</span>
                           </div>
+                          {idx === 0 && searchQuery && <span className="top-badge-v4">Top</span>}
                           <ChevronRight size={16} />
                         </button>
                       );
@@ -408,77 +492,6 @@ export default function Landing() {
             onError={(err) => console.error(err)}
             onClose={() => setIsScannerOpen(false)}
           />
-        </div>
-      )}
-
-      {/* ── Location Confirmation Sheet ── */}
-      {locationConfirmPending && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1500,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'flex-end',
-        }} onClick={() => setLocationConfirmPending(null)}>
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', background: 'white',
-              borderRadius: '24px 24px 0 0',
-              padding: '28px 24px 40px',
-              boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
-            }}
-          >
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 24px' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: '50%',
-                background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <MapPin size={20} color="white" fill="white" />
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 17, color: '#1e293b' }}>Are you here?</div>
-                <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Detected location:</div>
-              </div>
-            </div>
-            <div style={{
-              background: '#f1f5f9', borderRadius: 14, padding: '14px 16px',
-              margin: '16px 0 24px', fontWeight: 600, fontSize: 15, color: '#1e293b',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <Circle size={10} fill="#3b82f6" stroke="#3b82f6" />
-              {locationConfirmPending}
-            </div>
-            <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6, margin: '0 0 24px' }}>
-              Confirm this as your starting point, or pin your exact position on the floor map.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <button
-                onClick={() => handleConfirmLocation(locationConfirmPending)}
-                style={{
-                  padding: '16px', borderRadius: 16, border: 'none',
-                  background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
-                  color: 'white', fontWeight: 700, fontSize: 16, cursor: 'pointer',
-                  boxShadow: '0 4px 16px rgba(59,130,246,0.4)',
-                }}
-              >
-                ✅ Yes, I'm standing here — Start Navigation
-              </button>
-              <button
-                onClick={handlePinInstead}
-                style={{
-                  padding: '14px', borderRadius: 16,
-                  border: '1.5px solid #e2e8f0',
-                  background: 'white', color: '#374151', fontWeight: 600,
-                  fontSize: 15, cursor: 'pointer', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', gap: 8,
-                }}
-              >
-                <Map size={18} color="#6366f1" /> Pin my exact location on the map
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

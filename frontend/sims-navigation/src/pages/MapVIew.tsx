@@ -27,6 +27,7 @@ interface TestData {
   edges: any;
 }
 type NodeType = { x: number; y: number; type: string };
+type EdgeType = { from: string; to: string };
 
 const dataModules = import.meta.glob('../data/*.json', { eager: true });
 
@@ -70,8 +71,22 @@ const MapView = () => {
   // overrideOriginId: set when user re-pins during navigation — re-routes from new position
   const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
   const effectiveOriginId = overrideOriginId ?? originId;
+  const [tempOriginNode, setTempOriginNode] = useState<{ id: string; x: number; y: number; anchorId: string } | null>(null);
+  const [showInitialPinPrompt, setShowInitialPinPrompt] = useState(true);
   
   const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, [typedTestData]);
+  const effectiveNodeMap = useMemo(() => {
+    if (!tempOriginNode) return nodeMap;
+    return {
+      ...nodeMap,
+      [tempOriginNode.id]: { x: tempOriginNode.x, y: tempOriginNode.y, type: "temp" },
+    } as Record<string, NodeType>;
+  }, [nodeMap, tempOriginNode]);
+  const effectiveEdges = useMemo(() => {
+    const base = typedTestData.edges as EdgeType[];
+    if (!tempOriginNode) return base;
+    return [...base, { from: tempOriginNode.id, to: tempOriginNode.anchorId }];
+  }, [typedTestData.edges, tempOriginNode]);
 
   // Dynamically calculate the map boundaries based on the current floor's extreme node coordinates
   // This prevents the map from having infinite empty scrolling space if the floor is smaller
@@ -96,14 +111,14 @@ const MapView = () => {
       .filter((i): i is { name: string; x: number; y: number; id: string; pic: string } => i !== null);
   }, [destinations, nodeMap, typedTestData]);
 
-  const startNode = useMemo(() => nodeMap[effectiveOriginId || ""] || { x: 785, y: 924 }, [effectiveOriginId, nodeMap]);
+  const startNode = useMemo(() => effectiveNodeMap[effectiveOriginId || ""] || { x: 785, y: 924 }, [effectiveOriginId, effectiveNodeMap]);
 
   const routePath = useMemo(() => {
     if (!effectiveOriginId || !destId) return [];
-    return findShortestPath(effectiveOriginId, destId, nodeMap, typedTestData.edges);
-  }, [effectiveOriginId, destId, nodeMap, typedTestData.edges]);
+    return findShortestPath(effectiveOriginId, destId, effectiveNodeMap, effectiveEdges);
+  }, [effectiveOriginId, destId, effectiveNodeMap, effectiveEdges]);
 
-  const routePoints = useMemo(() => routePath.map((id) => nodeMap[id]).filter(Boolean), [routePath, nodeMap]);
+  const routePoints = useMemo(() => routePath.map((id) => effectiveNodeMap[id]).filter(Boolean), [routePath, effectiveNodeMap]);
 
   const [actualPath, setActualPath] = useState<{ x: number; y: number }[]>([]);
   const [isDeviated, setIsDeviated] = useState(false);
@@ -117,14 +132,22 @@ const MapView = () => {
   const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
   const [isRecalibrating, setIsRecalibrating] = useState(false);
   const [isRepinning, setIsRepinning] = useState(false);
+  const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
+  const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
+
+  useEffect(() => {
+    setShowInitialPinPrompt(true);
+    setOverrideOriginId(null);
+    setTempOriginNode(null);
+  }, [originId, destId, floorParam]);
 
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
 
   const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
 
-  const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, nodeMap, typedTestData.edges, routePath), [rawPos, nodeMap, typedTestData.edges, routePath]);
+  const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, effectiveNodeMap, effectiveEdges, routePath), [rawPos, effectiveNodeMap, effectiveEdges, routePath]);
   const snappedPos = { x: snapResult.x, y: snapResult.y };
 
   const navState = useMemo(() => {
@@ -134,14 +157,15 @@ const MapView = () => {
     let currentIdx = 0;
     let minD = Infinity;
     routePath.forEach((id, idx) => {
-      const n = nodeMap[id];
+      const n = effectiveNodeMap[id];
+      if (!n) return;
       const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
       if (d < minD) { minD = d; currentIdx = idx; }
     });
     for (let i = currentIdx; i < routePath.length - 1; i++) {
-      const curr = nodeMap[routePath[i]];
-      const next = nodeMap[routePath[i + 1]];
-      const after = routePath[i + 2] ? nodeMap[routePath[i + 2]] : null;
+      const curr = effectiveNodeMap[routePath[i]];
+      const next = effectiveNodeMap[routePath[i + 1]];
+      const after = routePath[i + 2] ? effectiveNodeMap[routePath[i + 2]] : null;
       if (!curr || !next) continue;
       distToTurn += Math.hypot(curr.x - next.x, curr.y - next.y);
       if (after) {
@@ -156,13 +180,13 @@ const MapView = () => {
     if (currentIdx >= routePath.length - 1) turnType = "finish";
     let totalRem = 0;
     for (let i = currentIdx; i < routePath.length - 1; i++) {
-      const n1 = nodeMap[routePath[i]];
-      const n2 = nodeMap[routePath[i + 1]];
+      const n1 = effectiveNodeMap[routePath[i]];
+      const n2 = effectiveNodeMap[routePath[i + 1]];
       if (n1 && n2) totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
     }
     const PX_PER_M = 12.2;
     return { turnType, distToTurn: Math.max(0, distToTurn / PX_PER_M), totalRem: Math.max(0, totalRem / PX_PER_M) };
-  }, [snappedPos, routePath, nodeMap]);
+  }, [snappedPos, routePath, effectiveNodeMap]);
 
   const progress = useMemo(() => {
     if (!routePath.length || !snappedPos) return 0;
@@ -194,6 +218,8 @@ const MapView = () => {
     const svgCx = (vp.clientWidth  / 2 - camX) / zoom;
     const svgCy = (vp.clientHeight / 2 - camY) / zoom;
 
+    setRepinTarget({ x: svgCx, y: svgCy });
+
     const entries = Object.entries(nodeMap);
     if (!entries.length) return;
 
@@ -220,20 +246,30 @@ const MapView = () => {
   }, [evaluateRepinPos]);
 
   const handleRepinConfirm = () => {
-    if (!repinNearest) return;
+    if (!repinNearest || !repinTarget) return;
+    const tempId = `temp_origin_${Date.now()}`;
+    setTempOriginNode({ id: tempId, x: repinTarget.x, y: repinTarget.y, anchorId: repinNearest.id });
+    setOverrideOriginId(tempId);
     // Move the PDR tracker to the new physical position
-    forceSetPos(repinNearest.x, repinNearest.y);
-    // Re-route from the newly pinned node to the same destination
-    setOverrideOriginId(repinNearest.id);
+    forceSetPos(repinTarget.x, repinTarget.y);
     // Clear navigation history so route re-renders cleanly
     setActualPath([]);
     checkedTurns.current.clear();
     setIsRepinning(false);
     setRepinNearest(null);
+    setRepinTarget(null);
     setAutoFollow(true);
+
+    if (repinModeSource === "initial") {
+      setShowInitialPinPrompt(false);
+      setTimeout(() => {
+        startNavigation();
+      }, 0);
+    }
   };
 
-  const startRepinMode = () => {
+  const startRepinMode = (source: "initial" | "lost" = "lost") => {
+    setRepinModeSource(source);
     setIsRepinning(true);
     setAutoFollow(false);
     gsap.killTweensOf(cameraLayerRef.current);
@@ -248,14 +284,14 @@ const MapView = () => {
     if (!routePath.length) return;
     const next = Math.min(stepIndex + 1, routePath.length - 1);
     setStepIndex(next);
-    const n = nodeMap[routePath[next]];
+    const n = effectiveNodeMap[routePath[next]];
     if (n) forceSetPos(n.x, n.y);
   };
   const handlePrevStep = () => {
     if (!routePath.length) return;
     const prev = Math.max(stepIndex - 1, 0);
     setStepIndex(prev);
-    const n = nodeMap[routePath[prev]];
+    const n = effectiveNodeMap[routePath[prev]];
     if (n) forceSetPos(n.x, n.y);
   };
 
@@ -263,9 +299,9 @@ const MapView = () => {
     const turns: string[] = [];
     if (routePath.length < 3) return turns;
     for (let i = 1; i < routePath.length - 1; i++) {
-      const prev = nodeMap[routePath[i - 1]];
-      const curr = nodeMap[routePath[i]];
-      const next = nodeMap[routePath[i + 1]];
+      const prev = effectiveNodeMap[routePath[i - 1]];
+      const curr = effectiveNodeMap[routePath[i]];
+      const next = effectiveNodeMap[routePath[i + 1]];
       if (!prev || !curr || !next) continue;
       const a1 = Math.atan2(curr.y - prev.y, curr.x - prev.x);
       const a2 = Math.atan2(next.y - curr.y, next.x - curr.x);
@@ -274,7 +310,7 @@ const MapView = () => {
       if (diff > 0.6) turns.push(routePath[i]);
     }
     return turns;
-  }, [routePath, nodeMap]);
+  }, [routePath, effectiveNodeMap]);
 
   useEffect(() => { if (isNavActive) setIsDeviated(!snapResult.isOnRoute); }, [snapResult, isNavActive]);
 
@@ -282,7 +318,8 @@ const MapView = () => {
     if (!isNavActive || isPaused) return;
     for (const nodeId of turnNodes) {
       if (checkedTurns.current.has(nodeId)) continue;
-      const node = nodeMap[nodeId];
+      const node = effectiveNodeMap[nodeId];
+      if (!node) continue;
       const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
       if (dist < 80 && isDeviated) {
         setIsPaused(true);
@@ -292,7 +329,7 @@ const MapView = () => {
         break;
       }
     }
-  }, [snappedPos, isNavActive, isPaused, turnNodes, nodeMap, isDeviated]);
+  }, [snappedPos, isNavActive, isPaused, turnNodes, effectiveNodeMap, isDeviated]);
 
   const handleConfirmTurn = () => { if (pendingTurnNode) forceSetPos(pendingTurnNode.x, pendingTurnNode.y); setShowTurnPopup(false); setIsPaused(false); setPendingTurnNode(null); };
   const handleSkipTurn = () => { setShowTurnPopup(false); setIsPaused(false); setPendingTurnNode(null); };
@@ -333,6 +370,7 @@ const MapView = () => {
 
 
   const startNavigation = async () => {
+    setShowInitialPinPrompt(false);
     if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
       try {
         const res = await (DeviceMotionEvent as any).requestPermission();
@@ -424,7 +462,14 @@ const MapView = () => {
     });
   }, [heading, autoFollow]);
 
-  const clampCamera = (nx: number, ny: number, nz: number, focus?: { x: number; y: number }, marginPercent = 0.05) => {
+  const clampCamera = (
+    nx: number,
+    ny: number,
+    nz: number,
+    focus?: { x: number; y: number },
+    marginPercent = 0.05,
+    relaxed = false,
+  ) => {
     const vp = viewportRef.current;
     if (!vp) return { x: nx, y: ny, z: nz };
     const vpW = vp.clientWidth;
@@ -435,8 +480,8 @@ const MapView = () => {
     const maxZoom = 8;
     while ((MAP_W * z < vpW || MAP_H * z < vpH) && z < maxZoom) z = Math.min(maxZoom, z * 1.1);
     
-    // Add generous padding bounds (min 600px) so map doesn't stick hard to viewport corners
-    const paddingLimit = Math.max(vpW * 0.4, 600);
+    // In repin mode keep much looser bounds so users can place pin across the full floor
+    const paddingLimit = relaxed ? Math.max(vpW * 2.2, 2200) : Math.max(vpW * 0.4, 600);
     const minX = vpW - MAP_W * z - paddingLimit;
     const maxX = paddingLimit;
     const minY = vpH - MAP_H * z - paddingLimit;
@@ -464,7 +509,7 @@ const MapView = () => {
 
   useEffect(() => {
     // Only execute clamping buffer if the user manually panned (autoFollow is false)
-    if (autoFollow || !viewportRef.current || !cameraLayerRef.current || pointers.current.size > 0) return;
+    if (isRepinning || autoFollow || !viewportRef.current || !cameraLayerRef.current || pointers.current.size > 0) return;
     const vp = viewportRef.current;
     const { zoom, x: curX, y: curY } = camState.current;
     const screenX = snappedPos.x * zoom + curX;
@@ -483,7 +528,7 @@ const MapView = () => {
       const c = clampCamera(targetX, targetY, camState.current.zoom, snappedPos, 0.20);
       gsap.to(cameraLayerRef.current, { x: c.x, y: c.y, duration: 0.45, ease: "power3.out", onComplete: () => { camState.current.x = c.x; camState.current.y = c.y; } });
     }
-  }, [snappedPos]);
+  }, [snappedPos, isRepinning]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -523,14 +568,14 @@ const MapView = () => {
 
         // the clampCamera will automatically fix nz if bounds exceed map limits, 
         // so we must recalculate target X/Y if nz gets modified by clamp!
-        const c = clampCamera(targetX, targetY, nz);
+        const c = clampCamera(targetX, targetY, nz, undefined, 0.05, isRepinning);
         
         // Recalculate if zoom boundary hit:
         const finalX = screenCx - (svgCx * c.z);
         const finalY = screenCy - (svgCy * c.z);
         
         // Re-clamp the translations strictly using the final bounded zoom!
-        const finalC = clampCamera(finalX, finalY, c.z);
+        const finalC = clampCamera(finalX, finalY, c.z, undefined, 0.05, isRepinning);
 
         gsap.set(cameraLayerRef.current, { scale: finalC.z, x: finalC.x, y: finalC.y });
         camState.current.zoom = finalC.z;
@@ -549,7 +594,7 @@ const MapView = () => {
       const nx = camState.current.x + dx;
       const ny = camState.current.y + dy;
       // Removed focus clamping on pure pan to allow free movement across the map space
-      const c = clampCamera(nx, ny, camState.current.zoom);
+      const c = clampCamera(nx, ny, camState.current.zoom, undefined, 0.05, isRepinning);
       gsap.set(cameraLayerRef.current, { x: c.x, y: c.y });
       camState.current.x = c.x;
       camState.current.y = c.y;
@@ -584,7 +629,7 @@ const MapView = () => {
     setAutoFollow(false);
     const nz = dir === "in" ? camState.current.zoom * 1.35 : camState.current.zoom / 1.35;
     // Allow zooming freely without snapping the center back to snappedPos
-    const c = clampCamera(camState.current.x, camState.current.y, nz);
+    const c = clampCamera(camState.current.x, camState.current.y, nz, undefined, 0.05, isRepinning);
     gsap.to(cameraLayerRef.current, { scale: c.z, x: c.x, y: c.y, duration: 0.4 });
     camState.current.zoom = c.z;
     camState.current.x = c.x;
@@ -617,6 +662,23 @@ const MapView = () => {
           <div ref={map3DRef} style={{ width: "100%", height: "100%" }}>
             <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0" }}>
               <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
+              {tempOriginNode && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: tempOriginNode.x,
+                    top: tempOriginNode.y,
+                    transform: "translate(-50%, -50%)",
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    background: "#2563eb",
+                    border: "2px solid white",
+                    boxShadow: "0 0 0 6px rgba(37,99,235,0.2)",
+                    zIndex: 28,
+                  }}
+                />
+              )}
               {destinationMarkers.map((dest) => (
                 <div key={dest.name} onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
                   style={{ position: "absolute", left: dest.x, top: dest.y, transform: "translate(-50%, -100%)", background: "white", padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", whiteSpace: "nowrap" }}>
@@ -637,12 +699,12 @@ const MapView = () => {
       {/* ── Lost? floating button during active navigation ── */}
       {isNavActive && !isRepinning && (
         <button
-          onClick={startRepinMode}
+          onClick={() => startRepinMode("lost")}
           style={{
             position: 'absolute', right: 20, top: 140,
             width: 50, height: 50, borderRadius: '50%',
-            background: 'linear-gradient(135deg,#f59e0b,#d97706)',
-            border: 'none', boxShadow: '0 2px 12px rgba(245,158,11,0.45)',
+            background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
+            border: 'none', boxShadow: '0 2px 12px rgba(37,99,235,0.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 500, cursor: 'pointer', flexDirection: 'column',
           }}
@@ -652,8 +714,69 @@ const MapView = () => {
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
             <circle cx="12" cy="9" r="2.5"/>
           </svg>
-          <span style={{ fontSize: 8, color: 'white', fontWeight: 700, marginTop: 1 }}>LOST?</span>
+          <span style={{ fontSize: 8, color: 'white', fontWeight: 700, marginTop: 1 }}>PIN</span>
         </button>
+      )}
+
+      {!isNavActive && showInitialPinPrompt && !isRepinning && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 24,
+            transform: "translateX(-50%)",
+            width: "min(92vw, 380px)",
+            background: "#ffffff",
+            border: "1px solid #dbeafe",
+            borderRadius: 18,
+            padding: "14px 14px 12px",
+            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
+            zIndex: 620,
+            color: "#0f172a",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Confirm your exact start point</div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
+            Move the pin on map like Uber, then we will start navigation from that point.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setShowInitialPinPrompt(false)}
+              style={{
+                flex: 1,
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                color: "#1e40af",
+                borderRadius: 12,
+                padding: "10px 8px",
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Keep current origin
+            </button>
+            <button
+              onClick={() => {
+                setShowInitialPinPrompt(false);
+                startRepinMode("initial");
+              }}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
+                color: "white",
+                borderRadius: 12,
+                padding: "10px 8px",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Pin my location
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Re-pin overlay: fixed center crosshair on the live map ── */}
@@ -662,19 +785,20 @@ const MapView = () => {
           {/* Dimmed top hint bar */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, zIndex: 600,
-            background: 'rgba(15,23,42,0.88)',
+            background: 'rgba(255,255,255,0.96)',
+            borderBottom: '1px solid #e2e8f0',
             padding: '14px 20px 10px',
             display: 'flex', alignItems: 'center', gap: 12,
           }}>
             <button
               onClick={() => { setIsRepinning(false); setRepinNearest(null); }}
-              style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
+              style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '50%',
                 width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'white', fontSize: 16 }}
+                cursor: 'pointer', color: '#1d4ed8', fontSize: 16 }}
             >✕</button>
             <div>
-              <div style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>Pan map to your real position</div>
-              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>The pin will snap to the nearest corridor</div>
+              <div style={{ color: '#0f172a', fontWeight: 700, fontSize: 14 }}>Pan map to your real position</div>
+              <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>The pin snaps to the nearest corridor</div>
             </div>
           </div>
 
@@ -687,10 +811,10 @@ const MapView = () => {
           }}>
             <svg width="36" height="48" viewBox="0 0 36 48" fill="none">
               <circle cx="18" cy="18" r="16"
-                fill={repinNearest && repinNearest.dist < 150 ? '#22c55e' : repinNearest && repinNearest.dist < 350 ? '#f59e0b' : '#ef4444'}
+                fill="#2563eb"
                 stroke="white" strokeWidth="3" />
               <circle cx="18" cy="18" r="7" fill="white" opacity={0.8} />
-              <path d="M18 32 L18 48" stroke={repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'} strokeWidth="3" strokeLinecap="round" />
+              <path d="M18 32 L18 48" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" />
             </svg>
           </div>
 
@@ -702,7 +826,7 @@ const MapView = () => {
           }}>
             <div style={{
               width: 44, height: 44, borderRadius: '50%',
-              border: `2px solid ${repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'}`,
+              border: '2px solid #60a5fa',
               opacity: 0.3,
               animation: 'repinPulse 2s ease-in-out infinite',
             }} />
@@ -711,27 +835,28 @@ const MapView = () => {
           {/* Bottom confirm sheet */}
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 610,
-            background: 'rgba(15,23,42,0.97)',
+            background: '#ffffff',
+            borderTop: '1px solid #e2e8f0',
             borderRadius: '20px 20px 0 0',
             padding: '20px 20px 36px',
-            boxShadow: '0 -4px 24px rgba(0,0,0,0.35)',
+            boxShadow: '0 -4px 24px rgba(15,23,42,0.2)',
           }}>
             {/* Nearest location status */}
             <div style={{
-              background: 'rgba(255,255,255,0.07)',
+              background: '#eff6ff',
+              border: '1px solid #dbeafe',
               borderRadius: 12, padding: '12px 14px',
               marginBottom: 16,
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <div style={{
                 width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                background: repinNearest && repinNearest.dist < 150 ? '#22c55e' :
-                            repinNearest && repinNearest.dist < 350 ? '#f59e0b' : '#ef4444',
-                boxShadow: `0 0 6px ${repinNearest && repinNearest.dist < 150 ? '#22c55e' : '#f59e0b'}`,
+                background: '#3b82f6',
+                boxShadow: '0 0 6px rgba(59,130,246,0.55)',
               }} />
               <div>
-                <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Nearest corridor: </span>
-                <span style={{ color: 'white', fontSize: 13, fontWeight: 600 }}>
+                <span style={{ color: '#64748b', fontSize: 11 }}>Nearest corridor: </span>
+                <span style={{ color: '#0f172a', fontSize: 13, fontWeight: 600 }}>
                   {repinNearest ? (repinNearest.name.length > 22 ? repinNearest.name.slice(0,21)+'…' : repinNearest.name) : 'Searching...'}
                 </span>
               </div>
@@ -739,9 +864,9 @@ const MapView = () => {
 
             {repinNearest && repinNearest.dist > 350 && (
               <div style={{
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                background: '#f8fafc', border: '1px solid #cbd5e1',
                 borderRadius: 10, padding: '10px 12px', marginBottom: 14,
-                color: '#fca5a5', fontSize: 12, lineHeight: 1.5,
+                color: '#475569', fontSize: 12, lineHeight: 1.5,
               }}>
                 Pin is far from any corridor. Pan closer to a hallway or scan a QR code nearby.
               </div>
@@ -754,15 +879,16 @@ const MapView = () => {
                 width: '100%', padding: '15px', borderRadius: 14,
                 border: 'none',
                 background: repinNearest && repinNearest.dist <= 350
-                  ? 'linear-gradient(135deg,#22c55e,#16a34a)'
-                  : 'rgba(255,255,255,0.1)',
-                color: 'white', fontWeight: 700, fontSize: 15,
+                  ? 'linear-gradient(135deg,#3b82f6,#1d4ed8)'
+                  : '#cbd5e1',
+                color: repinNearest && repinNearest.dist <= 350 ? 'white' : '#64748b',
+                fontWeight: 700, fontSize: 15,
                 cursor: repinNearest && repinNearest.dist <= 350 ? 'pointer' : 'not-allowed',
                 transition: 'all 0.3s',
-                boxShadow: repinNearest && repinNearest.dist <= 350 ? '0 4px 16px rgba(34,197,94,0.4)' : 'none',
+                boxShadow: repinNearest && repinNearest.dist <= 350 ? '0 4px 16px rgba(37,99,235,0.35)' : 'none',
               }}
             >
-              📍 Yes, I'm here — Continue navigation
+              Confirm pin and continue
             </button>
           </div>
 
