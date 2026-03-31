@@ -10,7 +10,6 @@ import { gsap } from "gsap";
 import Header from "../components/Header";
 import QRScanner from "../components/QRScanner";
 import Avatar from "../components/avatar";
-import PinPickupMap from "../components/PinPickupMap";
 import VoiceToTextMic from "../components/Mic";
 import { fuzzyScore } from "../utils/search";
 import "./landing.css";
@@ -56,17 +55,11 @@ export default function Landing() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [recentDestinations, setRecentDestinations] = useState<string[]>([]);
 
-  // --- PIN PICKUP STATE ---
-  // Floor picker for map-pin feature
+  // --- FLOOR SEARCH FILTER STATE ---
+  // Floor picker for search filtering
   const [floorPickerOpen, setFloorPickerOpen] = useState(false);
-  // Which floor the PinPickupMap shows
-  const [pinPickerFloorId, setPinPickerFloorId] = useState<string | null>(null);
-
-  // Derived: the floor data for map-pin
-  const pinPickerFloorData = useMemo(() => {
-    if (!pinPickerFloorId) return null;
-    return ALL_FLOOR_DATA.find(f => f.id === pinPickerFloorId)?.data || null;
-  }, [pinPickerFloorId]);
+  // Which floor/map search should use for results
+  const [searchFloorId, setSearchFloorId] = useState<string | null>(null);
 
   // Only show floors that have a real svg in meta
   const availableFloors = useMemo(() =>
@@ -95,7 +88,20 @@ export default function Landing() {
     return combined.sort((a, b) => a.name.localeCompare(b.name));
   }, []);
 
-  const allDestinations = useMemo(() => Array.from(new Set(allDestinationsWithFloor.map(d => d.name))), [allDestinationsWithFloor]);
+  const searchScopedDestinationsWithFloor = useMemo(() => {
+    if (!searchFloorId) return allDestinationsWithFloor;
+    return allDestinationsWithFloor.filter(d => d.floor === searchFloorId);
+  }, [allDestinationsWithFloor, searchFloorId]);
+
+  const allDestinations = useMemo(
+    () => Array.from(new Set(searchScopedDestinationsWithFloor.map(d => d.name))),
+    [searchScopedDestinationsWithFloor],
+  );
+
+  const selectedSearchFloorName = useMemo(() => {
+    if (!searchFloorId) return "All Floors";
+    return ALL_FLOOR_DATA.find(f => f.id === searchFloorId)?.data?.meta?.floorName || "Selected Floor";
+  }, [searchFloorId]);
 
   const getCategoryForName = (name: string) => {
     const found = CATEGORIES.find(cat => cat.pattern.test(name));
@@ -123,7 +129,8 @@ export default function Landing() {
     const list = activeCategory ? categorizedData[activeCategory] : allDestinations;
 
     const buildResult = (name: string, score: number): SearchResultItem => {
-      const destInfo = allDestinationsWithFloor.find(d => d.name === name);
+      const destInfo = searchScopedDestinationsWithFloor.find(d => d.name === name)
+        || allDestinationsWithFloor.find(d => d.name === name);
       const floorId = destInfo?.floor || "test";
       const floorName = ALL_FLOOR_DATA.find(f => f.id === floorId)?.data?.meta?.floorName || "Unknown Floor";
       return {
@@ -157,7 +164,7 @@ export default function Landing() {
     return list
       .slice(0, 20)
       .map(name => buildResult(name, 0));
-  }, [searchQuery, activeCategory, categorizedData, allDestinations, allDestinationsWithFloor]);
+  }, [searchQuery, activeCategory, categorizedData, allDestinations, allDestinationsWithFloor, searchScopedDestinationsWithFloor]);
 
   const topResult = filteredResults[0] || null;
 
@@ -195,14 +202,13 @@ export default function Landing() {
   // User chose a floor from the floor picker
   const handleFloorChosen = (floorId: string) => {
     setFloorPickerOpen(false);
-    setPinPickerFloorId(floorId);
+    setSearchFloorId(floorId);
+    setSearchQuery("");
+    setActiveCategory(null);
   };
 
-  // User confirmed pin position on the map
-  const handlePinConfirm = (_nodeId: string, nodeName: string) => {
-    setSearchParams({ origin: nodeName });
-    setPinPickerFloorId(null);
-    setActiveStep('destination');
+  const openSearchFloorPicker = () => {
+    setFloorPickerOpen(true);
   };
 
   const handleSelectItem = (name: string) => {
@@ -214,7 +220,8 @@ export default function Landing() {
       setActiveStep('destination');
     } else {
       // Find floor for this destination
-      const destInfo = allDestinationsWithFloor.find(d => d.name === name);
+      const destInfo = searchScopedDestinationsWithFloor.find(d => d.name === name)
+        || allDestinationsWithFloor.find(d => d.name === name);
       const floor = destInfo ? destInfo.floor : "test";
 
       // Save to recent
@@ -235,7 +242,14 @@ export default function Landing() {
     setSearchParams({});
     setSearchQuery("");
     setActiveCategory(null);
+    setSearchFloorId(null);
     setActiveStep('origin');
+  };
+
+  const clearSearchFloor = () => {
+    setSearchFloorId(null);
+    setSearchQuery("");
+    setActiveCategory(null);
   };
 
   const clearOrigin = () => {
@@ -281,6 +295,12 @@ export default function Landing() {
       }
     }
   };
+
+  const visibleRecentDestinations = useMemo(() => {
+    if (!searchFloorId || activeStep !== 'destination') return recentDestinations;
+    const allowed = new Set(searchScopedDestinationsWithFloor.map(d => d.name));
+    return recentDestinations.filter(d => allowed.has(d));
+  }, [recentDestinations, searchFloorId, activeStep, searchScopedDestinationsWithFloor]);
 
   return (
     <div className="landing-page-v4">
@@ -359,14 +379,6 @@ export default function Landing() {
                   >
                     <QrCode size={18} />
                   </button>
-                  <button
-                    className="scan-trigger-btn"
-                    onClick={() => setFloorPickerOpen(true)}
-                    title="Pin my location on map"
-                    style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', color: 'white', marginLeft: 4, borderRadius: 10 }}
-                  >
-                    <Map size={16} />
-                  </button>
                 </>
               )}
                 {searchQuery && <X size={18} className="c-icon" onClick={() => setSearchQuery("")} />}
@@ -378,9 +390,17 @@ export default function Landing() {
                     ? 'Step 1: Set your current location'
                     : 'Step 2: Pick your destination'}
                 </span>
-                {(origin || destination) && (
-                  <button className="reset-journey-btn-v4" onClick={handleClearEverything}>Reset</button>
-                )}
+                <div className="search-help-actions-v4">
+                  <button className="floor-filter-btn-v4" onClick={openSearchFloorPicker}>
+                    {selectedSearchFloorName}
+                  </button>
+                  {searchFloorId && (
+                    <button className="clear-floor-btn-v4" onClick={clearSearchFloor}>All</button>
+                  )}
+                  {(origin || destination) && (
+                    <button className="reset-journey-btn-v4" onClick={handleClearEverything}>Reset</button>
+                  )}
+                </div>
               </div>
 
               {searchQuery && topResult && (
@@ -406,11 +426,11 @@ export default function Landing() {
                     ))}
                   </div>
 
-                  {recentDestinations.length > 0 && activeStep === 'destination' && (
+                  {visibleRecentDestinations.length > 0 && activeStep === 'destination' && (
                     <div className="recent-section-v4">
                       <h4><History size={12} /> Recent</h4>
                       <div className="recent-list-v4">
-                        {recentDestinations.map(d => (
+                        {visibleRecentDestinations.map(d => (
                           <button key={d} className="recent-chip-v4" onClick={() => handleSelectItem(d)}>{d}</button>
                         ))}
                       </div>
@@ -513,8 +533,8 @@ export default function Landing() {
             }}
           >
             <div style={{ width: 40, height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 20px' }} />
-            <h3 style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 18, color: '#1e293b' }}>Select Floor</h3>
-            <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: 13 }}>Choose the floor you are currently on</p>
+            <h3 style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 18, color: '#1e293b' }}>Select Map for Search</h3>
+            <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: 13 }}>Search will show destinations from the selected map only</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {availableFloors.map(floor => (
                 <button
@@ -549,16 +569,6 @@ export default function Landing() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* ── Pin Pickup Map (full screen) ── */}
-      {pinPickerFloorId && pinPickerFloorData && (
-        <PinPickupMap
-          floorData={pinPickerFloorData}
-          floorId={pinPickerFloorId}
-          onConfirm={handlePinConfirm}
-          onClose={() => setPinPickerFloorId(null)}
-        />
       )}
     </div>
   );

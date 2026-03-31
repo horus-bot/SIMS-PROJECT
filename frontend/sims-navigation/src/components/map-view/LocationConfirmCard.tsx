@@ -1,5 +1,8 @@
 import { useRef, useEffect } from "react";
 
+const AUTO_DISMISS_MS = 10000;
+const AUTO_DISMISS_SECONDS = Math.floor(AUTO_DISMISS_MS / 1000);
+
 interface LocationConfirmCardProps {
   room: string;
   image: string;
@@ -16,11 +19,11 @@ const LocationConfirmCard = ({
   const onRejectRef = useRef(onReject);
   onRejectRef.current = onReject;
 
-  // Auto-dismiss after 3s
+  // Auto-dismiss after configured duration
   useEffect(() => {
     const timer = setTimeout(() => {
       if (onRejectRef.current) onRejectRef.current();
-    }, 3000);
+    }, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -120,7 +123,7 @@ const LocationConfirmCard = ({
             fontSize: "14px",
           }}
         >
-          Not Here (3s)
+          Not Here ({AUTO_DISMISS_SECONDS}s)
         </button>
 
         <button
@@ -173,7 +176,7 @@ const LocationConfirmCard = ({
           style={{
             height: "100%",
             background: "#10B981",
-            animation: "countdown 3s linear forwards",
+            animation: `countdown ${AUTO_DISMISS_SECONDS}s linear forwards`,
             width: "100%",
           }}
         />

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import testData from "../data/test_1.json";
 import { Kalman2D } from "../utils/kalman2d";
 
 const PIXELS_PER_METER = 12.2; 
@@ -7,13 +6,23 @@ const STRIDE_METERS = 0.6; // Reduced to limit speed to ~1m/s
 // const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER;
 const SENSITIVITY = 0.9; 
 const STEP_COOLDOWN = 600; // Keep at 600ms for ~1 step/s max
-const HEADING_SMOOTHING = 0.05; // Reduced for more resistivity in direction changes 
+const HEADING_SMOOTHING = 0.1;
+const HEADING_DEADZONE_DEG = 1.2;
+const HEADING_MAX_TURN_RATE_DEG_PER_SEC = 90;
 
 let alpha = 0.8; 
 let gravity = { x: 0, y: 0, z: 0 };
 
 // Added initialMapAngle: 0 = Up, 90 = Right, 180 = Down, 270 = Left
-export const usePDR = (initialX: number, initialY: number, isActive: boolean, initialMapAngle: number = 0, routePath: string[] = [], isPaused: boolean = false) => {
+export const usePDR = (
+  initialX: number,
+  initialY: number,
+  isActive: boolean,
+  initialMapAngle: number = 0,
+  routePath: string[] = [],
+  isPaused: boolean = false,
+  nodesMap: Record<string, { x: number; y: number; type?: string }> = {},
+) => {
   const [rawPos, setRawPos] = useState({ x: initialX, y: initialY });
   const [heading, setHeading] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0); // m/s
@@ -23,6 +32,7 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
   const calibrationOffset = useRef<number | null>(null);
   
   const headingRef = useRef(0);
+  const lastHeadingTs = useRef<number>(Date.now());
   const lastAccel = useRef(0);
   const lastStepTime = useRef(0);
   const rawPosRef = useRef({ x: initialX, y: initialY });
@@ -38,6 +48,22 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
     rawPosRef.current = newPos;
     kfRef.current.setState(x, y);
   };
+
+  // Preset pointer heading to the initial route direction so the marker starts aligned.
+  useEffect(() => {
+    if (routePath.length < 2) return;
+
+    const startNode = nodesMap[routePath[0]];
+    const nextNode = nodesMap[routePath[1]];
+    if (!startNode || !nextNode) return;
+
+    const dx = nextNode.x - startNode.x;
+    const dy = nextNode.y - startNode.y;
+    const initialRouteHeading = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+
+    headingRef.current = initialRouteHeading;
+    setHeading(initialRouteHeading);
+  }, [routePath, nodesMap]);
 
   useEffect(() => {
     if (!isActive || isPaused) {
@@ -100,7 +126,7 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
         let stepY = -Math.cos(rad) * dynamicStridePx;
 
         // --- STEP WEIGHTING (Pull towards next node) ---
-        const nodes = testData.nodes as any;
+        const nodes = nodesMap as any;
         let closestIdx = -1;
         let minDist = Infinity;
         routePath.forEach((nodeId, idx) => {
@@ -167,7 +193,7 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
       const relativeHeading = (rawCompass - (calibrationOffset.current || 0) + 90 + 360) % 360;
 
       // Compute ideal heading towards NEXT route node
-      const nodes = testData.nodes as any;
+      const nodes = nodesMap as any;
       let closestIdx = -1;
       let minDist = Infinity;
       routePath.forEach((nodeId, idx) => {
@@ -197,19 +223,31 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
         if (error > 180) error -= 360;
         if (error < -180) error += 360;
         
-        // MIXING: 60% Map Path, 40% Magnetometer
-        // This makes the user stick to the path direction visually
-        const HEADING_WEIGHT = 0.6;
+        // Heavier route bias keeps pointer direction rigid along corridor flow.
+        const HEADING_WEIGHT = 0.72;
         targetHeading = (relativeHeading + error * HEADING_WEIGHT + 360) % 360;
       }
 
-      // APPLY LOW-PASS FILTER FOR SMOOTHNESS
+      // Apply dead-zone + bounded smoothing so heading stays stable without sudden jumps.
       setHeading(prevHeading => {
+        const nowTs = Date.now();
+        const dt = Math.max(0.016, (nowTs - lastHeadingTs.current) / 1000);
+        lastHeadingTs.current = nowTs;
+
         let diff = targetHeading - prevHeading;
         if (diff > 180) diff -= 360;
         if (diff < -180) diff += 360;
 
-        const smoothed = (prevHeading + diff * HEADING_SMOOTHING + 360) % 360;
+        if (Math.abs(diff) < HEADING_DEADZONE_DEG) {
+          headingRef.current = prevHeading;
+          return prevHeading;
+        }
+
+        const desiredStep = diff * HEADING_SMOOTHING;
+        const maxStep = HEADING_MAX_TURN_RATE_DEG_PER_SEC * dt;
+        const boundedStep = Math.max(-maxStep, Math.min(maxStep, desiredStep));
+
+        const smoothed = (prevHeading + boundedStep + 360) % 360;
         headingRef.current = smoothed; 
         return smoothed;
       });
@@ -223,7 +261,7 @@ export const usePDR = (initialX: number, initialY: number, isActive: boolean, in
       window.removeEventListener('deviceorientation', handleOrientation);
       if (speedResetTimer.current) clearTimeout(speedResetTimer.current);
     };
-  }, [isActive, initialMapAngle]);
+  }, [isActive, isPaused, initialMapAngle, routePath, nodesMap]);
 
   return { rawPos, heading, forceSetPos, currentSpeed };
 };

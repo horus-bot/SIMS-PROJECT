@@ -5,7 +5,7 @@ import {
   useRef,
   useCallback,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import gsap from "gsap";
 import TestMap from "../components/map/testMap";
 import { applyCRFConstraints } from "../utils/mapMatching";
@@ -45,9 +45,15 @@ Object.entries(dataModules).forEach(([path, mod]) => {
 });
 
 const FIXED_PITCH = 0;
-const MAX_INITIAL_ZOOM = 1.4;  // cap so map is never too close on load
+const MAX_INITIAL_ZOOM = 1.7;  // slightly closer on load for better readability
+const INITIAL_ZOOM_BOOST = 1.12;
+const DRAG_DISABLE_AUTOFOLLOW_THRESHOLD_PX = 8;
+const LABEL_FOCUS_BOX_WIDTH = 320;
+const LABEL_FOCUS_BOX_HEIGHT = 220;
+const MAX_VISIBLE_LABELS = 6;
 
 const MapView = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isNavActive, setIsNavActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -132,6 +138,7 @@ const MapView = () => {
   const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
   const [isRecalibrating, setIsRecalibrating] = useState(false);
   const [isRepinning, setIsRepinning] = useState(false);
+  const [cameraZoom, setCameraZoom] = useState(1);
   const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
   const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
@@ -145,10 +152,55 @@ const MapView = () => {
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
 
-  const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(startNode.x, startNode.y, isNavActive, 0, routePath, isPaused);
+  const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(
+    startNode.x,
+    startNode.y,
+    isNavActive,
+    0,
+    routePath,
+    isPaused,
+    effectiveNodeMap,
+  );
 
   const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, effectiveNodeMap, effectiveEdges, routePath), [rawPos, effectiveNodeMap, effectiveEdges, routePath]);
   const snappedPos = { x: snapResult.x, y: snapResult.y };
+
+  // Invisible moving focus-box around user pointer: only labels inside this box are shown.
+  const focusedDestinationMarkers = useMemo(() => {
+    if (!destinationMarkers.length) return [];
+
+    // Keep focus-box screen size stable across zoom levels by converting to map-space.
+    const normalizedZoom = Math.max(cameraZoom, 0.25);
+    const halfW = (LABEL_FOCUS_BOX_WIDTH / normalizedZoom) / 2;
+    const halfH = (LABEL_FOCUS_BOX_HEIGHT / normalizedZoom) / 2;
+    const inBox = destinationMarkers
+      .filter((dest) => Math.abs(dest.x - snappedPos.x) <= halfW && Math.abs(dest.y - snappedPos.y) <= halfH)
+      .sort((a, b) => {
+        const da = Math.hypot(a.x - snappedPos.x, a.y - snappedPos.y);
+        const db = Math.hypot(b.x - snappedPos.x, b.y - snappedPos.y);
+        return da - db;
+      });
+
+    if (inBox.length > 0) return inBox.slice(0, MAX_VISIBLE_LABELS);
+
+    // Keep one nearby label when box is empty so context is not lost.
+    const nearest = destinationMarkers.reduce((best, curr) => {
+      const bestDist = Math.hypot(best.x - snappedPos.x, best.y - snappedPos.y);
+      const currDist = Math.hypot(curr.x - snappedPos.x, curr.y - snappedPos.y);
+      return currDist < bestDist ? curr : best;
+    });
+
+    return nearest ? [nearest] : [];
+  }, [destinationMarkers, snappedPos, cameraZoom]);
+
+  // Keep live-tracking position constrained on graph edges so user movement follows JSON network.
+  useEffect(() => {
+    if (!isNavActive) return;
+    const d = Math.hypot(rawPos.x - snappedPos.x, rawPos.y - snappedPos.y);
+    if (d > 6) {
+      forceSetPos(snappedPos.x, snappedPos.y);
+    }
+  }, [isNavActive, rawPos.x, rawPos.y, snappedPos.x, snappedPos.y, forceSetPos]);
 
   const navState = useMemo(() => {
     if (!routePath.length) return { turnType: "straight", distToTurn: 0, totalRem: 0 };
@@ -199,6 +251,29 @@ const MapView = () => {
     const remDist = navState.totalRem * PX_PER_M;
     return Math.min(100, Math.max(0, 100 - (remDist / totalDist) * 100));
   }, [navState.totalRem, routePath, snappedPos, routePoints]);
+
+  const nearestRouteIndex = useMemo(() => {
+    if (!routePath.length) return 0;
+    let bestIdx = 0;
+    let minDist = Infinity;
+
+    routePath.forEach((id, idx) => {
+      const node = effectiveNodeMap[id];
+      if (!node) return;
+      const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
+      if (dist < minDist) {
+        minDist = dist;
+        bestIdx = idx;
+      }
+    });
+
+    return bestIdx;
+  }, [routePath, effectiveNodeMap, snappedPos]);
+
+  useEffect(() => {
+    if (!isNavActive) return;
+    setStepIndex((prev) => (prev === nearestRouteIndex ? prev : nearestRouteIndex));
+  }, [isNavActive, nearestRouteIndex]);
 
   const handleQrRecalibrate = (result: string) => {
     const targetNodeId = destinations[result] || result;
@@ -282,14 +357,16 @@ const MapView = () => {
 
   const handleNextStep = () => {
     if (!routePath.length) return;
-    const next = Math.min(stepIndex + 1, routePath.length - 1);
+    const baseIndex = isNavActive ? nearestRouteIndex : stepIndex;
+    const next = Math.min(baseIndex + 1, routePath.length - 1);
     setStepIndex(next);
     const n = effectiveNodeMap[routePath[next]];
     if (n) forceSetPos(n.x, n.y);
   };
   const handlePrevStep = () => {
     if (!routePath.length) return;
-    const prev = Math.max(stepIndex - 1, 0);
+    const baseIndex = isNavActive ? nearestRouteIndex : stepIndex;
+    const prev = Math.max(baseIndex - 1, 0);
     setStepIndex(prev);
     const n = effectiveNodeMap[routePath[prev]];
     if (n) forceSetPos(n.x, n.y);
@@ -387,12 +464,23 @@ const MapView = () => {
   const cameraLayerRef = useRef<HTMLDivElement>(null);
   const [autoFollow, setAutoFollow] = useState(true);
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pointerStart = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const isManualGesture = useRef(false);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const lastPinch = useRef<number | null>(null);
 
+  const beginManualGestureControl = () => {
+    if (isManualGesture.current) return;
+    isManualGesture.current = true;
+    if (autoFollow) setAutoFollow(false);
+    gsap.killTweensOf(cameraLayerRef.current);
+    camState.current.x = gsap.getProperty(cameraLayerRef.current, "x") as number;
+    camState.current.y = gsap.getProperty(cameraLayerRef.current, "y") as number;
+  };
+
   useEffect(() => {
     if (!viewportRef.current || !cameraLayerRef.current || !map3DRef.current) return;
-    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, duration: 1.0, ease: "power2.out" });
+    gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, rotateZ: 0, duration: 1.0, ease: "power2.out" });
 
     const vp = viewportRef.current;
     const vpW = vp.clientWidth;
@@ -416,7 +504,7 @@ const MapView = () => {
 
       // Fit-to-viewport zoom WITHOUT any multiplier, then cap
       const zoomFit = Math.min(vpW / Math.max(routeW, 1), vpH / Math.max(routeH, 1));
-      const zoom = Math.min(zoomFit, MAX_INITIAL_ZOOM);
+      const zoom = Math.min(zoomFit * INITIAL_ZOOM_BOOST, MAX_INITIAL_ZOOM);
 
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
@@ -430,13 +518,15 @@ const MapView = () => {
       });
 
       camState.current = { x: camX, y: camY, zoom, bearing: 0 };
+      setCameraZoom(zoom);
     } else {
       // No route: fit entire map to screen at a comfortable level
       const { w: MAP_W, h: MAP_H } = mapBounds;
       const zFit = Math.min(vpW / MAP_W, vpH / MAP_H);
-      const z = Math.min(zFit * 1.1, MAX_INITIAL_ZOOM);
+      const z = Math.min(zFit * (INITIAL_ZOOM_BOOST + 0.03), MAX_INITIAL_ZOOM);
       camState.current = { x: 0, y: 0, zoom: z, bearing: 0 };
       gsap.set(cameraLayerRef.current, { x: 0, y: 0, scale: z });
+      setCameraZoom(z);
     }
   }, [routePoints]);
 
@@ -451,16 +541,6 @@ const MapView = () => {
       onComplete: () => { camState.current.x = tx; camState.current.y = ty; },
     });
   }, [snappedPos, autoFollow]);
-
-  useEffect(() => {
-    if (!autoFollow || !map3DRef.current) return;
-    gsap.to(map3DRef.current, {
-       rotateZ: -heading,
-       duration: 0.4,
-       ease: "none",
-       overwrite: "auto"
-    });
-  }, [heading, autoFollow]);
 
   const clampCamera = (
     nx: number,
@@ -533,10 +613,7 @@ const MapView = () => {
   const handlePointerDown = (e: React.PointerEvent) => {
     (e.target as Element).setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    setAutoFollow(false);
-    gsap.killTweensOf(cameraLayerRef.current);
-    camState.current.x = gsap.getProperty(cameraLayerRef.current, "x") as number;
-    camState.current.y = gsap.getProperty(cameraLayerRef.current, "y") as number;
+    pointerStart.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1) lastPointer.current = { x: e.clientX, y: e.clientY };
   };
 
@@ -546,6 +623,7 @@ const MapView = () => {
 
     // Handle pinch to zoom on mobile properly anchored to fingers
     if (pointers.current.size === 2) {
+      beginManualGestureControl();
       const pts = Array.from(pointers.current.values());
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (lastPinch.current !== null && lastPinch.current > 0) {
@@ -581,6 +659,7 @@ const MapView = () => {
         camState.current.zoom = finalC.z;
         camState.current.x = finalC.x;
         camState.current.y = finalC.y;
+        setCameraZoom(finalC.z);
       }
       lastPinch.current = dist;
       return;
@@ -589,6 +668,15 @@ const MapView = () => {
     lastPinch.current = null;
 
     if (pointers.current.size === 1 && lastPointer.current) {
+      const start = pointerStart.current.get(e.pointerId) || lastPointer.current;
+      const dragDistance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+
+      if (!isManualGesture.current && dragDistance < DRAG_DISABLE_AUTOFOLLOW_THRESHOLD_PX) {
+        return;
+      }
+
+      beginManualGestureControl();
+
       const dx = e.clientX - lastPointer.current.x;
       const dy = e.clientY - lastPointer.current.y;
       const nx = camState.current.x + dx;
@@ -606,18 +694,24 @@ const MapView = () => {
   const handlePointerUp = (e: React.PointerEvent) => {
     (e.target as Element).releasePointerCapture(e.pointerId);
     pointers.current.delete(e.pointerId);
+    pointerStart.current.delete(e.pointerId);
     if (pointers.current.size === 1) {
       const p = Array.from(pointers.current.values())[0];
       lastPointer.current = { x: p.x, y: p.y };
+      const remainingId = Array.from(pointers.current.keys())[0];
+      pointerStart.current.set(remainingId, { x: p.x, y: p.y });
     } else {
       lastPointer.current = null;
+      if (pointers.current.size === 0) {
+        isManualGesture.current = false;
+      }
     }
     lastPinch.current = null;
   };
 
   const handleRecenter = () => { 
     setAutoFollow(true); 
-    gsap.to(map3DRef.current, { rotateZ: -heading, rotateX: FIXED_PITCH, duration: 0.8 }); 
+    gsap.to(map3DRef.current, { rotateZ: 0, rotateX: FIXED_PITCH, duration: 0.8 }); 
     const vp = viewportRef.current;
     if (vp) {
       const tx = vp.clientWidth / 2 - snappedPos.x * camState.current.zoom;
@@ -634,9 +728,78 @@ const MapView = () => {
     camState.current.zoom = c.z;
     camState.current.x = c.x;
     camState.current.y = c.y;
+    setCameraZoom(c.z);
   };
 
-  if (!originId || !destId) return <div style={{ padding: 20, color: "#374151" }}>Invalid Route</div>;
+  const hasInvalidRoute = !originId || !destId || routePath.length === 0;
+
+  if (hasInvalidRoute) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "linear-gradient(180deg, #f8fafc, #eef2ff)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 20,
+          fontFamily: "'Inter', system-ui, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            width: "min(92vw, 420px)",
+            background: "white",
+            border: "1px solid #dbeafe",
+            borderRadius: 20,
+            padding: "22px 18px",
+            boxShadow: "0 20px 35px rgba(15,23,42,0.12)",
+          }}
+        >
+          <div style={{ fontSize: 19, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>Route not available</div>
+          <div style={{ color: "#475569", fontSize: 14, lineHeight: 1.55, marginBottom: 16 }}>
+            We could not build a route for this selection. Please go back and choose origin/destination again.
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1);
+                else navigate("/");
+              }}
+              style={{
+                flex: 1,
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                color: "#1e40af",
+                borderRadius: 12,
+                padding: "11px 10px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Go Back
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
+                color: "white",
+                borderRadius: 12,
+                padding: "11px 10px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Pick Route Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", overflow: "hidden", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -646,7 +809,41 @@ const MapView = () => {
         </div>
       )}
 
-      <button onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 50, height: 50, borderRadius: "50%", background: "white", border: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: isNavActive ? 14 : 18,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: "rgba(255,255,255,0.92)",
+          border: "1px solid #e2e8f0",
+          borderRadius: 999,
+          padding: "7px 10px",
+          boxShadow: "0 6px 18px rgba(15,23,42,0.12)",
+          zIndex: 520,
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{typedTestData.meta.floorName || "Current Floor"}</span>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: autoFollow ? "#1d4ed8" : "#475569",
+            background: autoFollow ? "#dbeafe" : "#f1f5f9",
+            borderRadius: 999,
+            padding: "4px 8px",
+          }}
+        >
+          {autoFollow ? "Follow" : "Explore"}
+        </span>
+      </div>
+
+      <button aria-label="Recalibrate with QR" title="Recalibrate with QR" onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 50, height: 50, borderRadius: "50%", background: "white", border: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer" }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
       </button>
 
@@ -679,13 +876,13 @@ const MapView = () => {
                   }}
                 />
               )}
-              {destinationMarkers.map((dest) => (
+              {focusedDestinationMarkers.map((dest) => (
                 <div key={dest.name} onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
-                  style={{ position: "absolute", left: dest.x, top: dest.y, transform: "translate(-50%, -100%)", background: "white", padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", whiteSpace: "nowrap" }}>
+                  style={{ position: "absolute", left: dest.x, top: dest.y, transform: "translate(-50%, -100%)", background: "white", padding: "6px 9px", borderRadius: 10, fontSize: 12, fontWeight: 600, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.08)", whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", transition: "all 0.2s ease", cursor: "pointer" }}>
                   📍 {dest.name}
                 </div>
               ))}
-              <div style={{ position: "absolute", left: snappedPos.x, top: snappedPos.y, transform: `translate(-50%, -50%) rotate(${heading}deg)`, zIndex: 30 }}>
+              <div style={{ position: "absolute", left: snappedPos.x, top: snappedPos.y, transform: `translate(-50%, -50%) rotate(${heading}deg)`, transition: "transform 120ms linear", willChange: "transform", zIndex: 30 }}>
                 <svg width="48" height="48" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="15" fill="#4285F4" stroke="white" strokeWidth="3" />
                   <path d="M50 20 L65 45 L35 45 Z" fill="#4285F4" />
@@ -714,7 +911,7 @@ const MapView = () => {
             <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
             <circle cx="12" cy="9" r="2.5"/>
           </svg>
-          <span style={{ fontSize: 8, color: 'white', fontWeight: 700, marginTop: 1 }}>PIN</span>
+          <span style={{ fontSize: 10, color: 'white', fontWeight: 700, marginTop: 1 }}>PIN</span>
         </button>
       )}
 

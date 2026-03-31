@@ -22,6 +22,8 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
   totalRem,
   currentSpeed = 0,
 }) => {
+  const isStepControlDisabled = !isNavActive;
+
   // Calculate estimated time remaining based on a default walking speed of 1.4 m/s (roughly 80 meters per minute) if speed is zero
   const speedToUse = currentSpeed > 0.1 ? currentSpeed : 1.4;
   const timeRemainingMins = totalRem ? Math.max(1, Math.ceil(totalRem / (speedToUse * 60))) : 0;
@@ -98,7 +100,7 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
               {destName ? `Destination: ${destName}` : "Select a destination"}
             </div>
             <div style={{ fontSize: "14px", color: "#64748B", marginTop: "6px" }}>
-              {destName ? "Ready to begin navigation" : "Tap on the map to choose"}
+              {destName ? "Tap Start Navigation when you are ready" : "Choose a destination to continue"}
             </div>
           </div>
         )}
@@ -110,6 +112,7 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
         {/* Manual Control (Prev) */}
         <button
           onClick={onPrevStep}
+          disabled={isStepControlDisabled}
           aria-label="Previous Step"
           style={{
             width: "40px",
@@ -117,12 +120,13 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
             flex: "none",
             borderRadius: "50%",
             border: "none",
-            cursor: "pointer",
+            cursor: isStepControlDisabled ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "#F3F4F6",
             color: "#4B5563",
+            opacity: isStepControlDisabled ? 0.45 : 1,
             transition: "all 0.2s ease",
           }}
         >
@@ -150,6 +154,7 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
             color: "#FFFFFF",
             boxShadow: isNavActive ? "0 4px 12px rgba(239, 68, 68, 0.3)" : "0 4px 12px rgba(37, 99, 235, 0.3)",
             transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            transform: "translateZ(0)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }}>
@@ -175,6 +180,7 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
         {/* Manual Control (Next) */}
         <button
           onClick={onNextStep}
+          disabled={isStepControlDisabled}
           aria-label="Next Step"
           style={{
             width: "40px",
@@ -182,12 +188,13 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
             flex: "none",
             borderRadius: "50%",
             border: "none",
-            cursor: "pointer",
+            cursor: isStepControlDisabled ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "#F3F4F6",
             color: "#4B5563",
+            opacity: isStepControlDisabled ? 0.45 : 1,
             transition: "all 0.2s ease",
           }}
         >

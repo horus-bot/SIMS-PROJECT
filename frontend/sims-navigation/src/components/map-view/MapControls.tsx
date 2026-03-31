@@ -19,15 +19,15 @@ const btn: React.CSSProperties = {
   width: 48,
   height: 48,
   borderRadius: "50%",
-  backgroundColor: "transparent",
+  backgroundColor: "rgba(255,255,255,0.9)",
   border: "1px solid rgba(0,0,0,0.06)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   cursor: "pointer",
-  boxShadow: "none",
+  boxShadow: "0 1px 4px rgba(2,6,23,0.06)",
   color: "#5F6368",
-  transition: "transform 0.12s, color 0.12s",
+  transition: "transform 0.2s, color 0.2s, box-shadow 0.2s",
   padding: 0,
 };
 
@@ -44,7 +44,7 @@ const MapControls: React.FC<MapControlsProps> = ({
       style={{
         position: "absolute",
         right: 16,
-        top: "35%",
+        top: "34%",
         display: "flex",
         flexDirection: "column",
         gap: 12,
@@ -54,7 +54,7 @@ const MapControls: React.FC<MapControlsProps> = ({
         background: "rgba(255,255,255,0.78)",
         backdropFilter: "saturate(140%) blur(8px)",
         WebkitBackdropFilter: "saturate(140%) blur(8px)",
-        boxShadow: "0 6px 20px rgba(16,24,40,0.08)",
+        boxShadow: "0 10px 24px rgba(16,24,40,0.12)",
         alignItems: "center",
       }}
     >

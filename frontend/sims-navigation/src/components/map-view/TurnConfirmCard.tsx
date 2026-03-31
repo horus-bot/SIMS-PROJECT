@@ -1,5 +1,8 @@
 import { useRef, useEffect } from "react";
 
+const AUTO_DISMISS_MS = 5000;
+const AUTO_DISMISS_SECONDS = Math.floor(AUTO_DISMISS_MS / 1000);
+
 interface TurnConfirmCardProps {
   onConfirm: () => void;
   onReject: () => void;
@@ -12,7 +15,7 @@ const TurnConfirmCard = ({ onConfirm, onReject }: TurnConfirmCardProps) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (onRejectRef.current) onRejectRef.current();
-    }, 3000);
+    }, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -165,7 +168,7 @@ const TurnConfirmCard = ({ onConfirm, onReject }: TurnConfirmCardProps) => {
           style={{
             height: "100%",
             background: "#F59E0B",
-            animation: "countdown 3s linear forwards",
+            animation: `countdown ${AUTO_DISMISS_SECONDS}s linear forwards`,
             width: "100%",
           }}
         />
