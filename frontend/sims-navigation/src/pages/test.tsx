@@ -4,7 +4,7 @@ import templateData from '../data/template.json';
 import firstfloorData from '../data/graphData_firstfloor.json';
 import fifthFloorData from '../data/graphData_5th.json';
 import { findShortestPath } from '../utils/pathfinding';
-import groundfloor from '../data/groundFloor.json';
+
 
 type NodeType = 'path' | 'destination';
 
