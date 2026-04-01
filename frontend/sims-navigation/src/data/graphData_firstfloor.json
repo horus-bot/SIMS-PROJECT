@@ -12,8 +12,8 @@
       "type": "destination"
     },
     "node_040": {
-      "x": 464.1,
-      "y": 505.8,
+      "x": 463.5,
+      "y": 508.3,
       "type": "path"
     },
     "node_041": {
@@ -217,7 +217,7 @@
       "type": "path"
     },
     "node_093": {
-      "x": 567.9,
+      "x": 564.8,
       "y": 587.2,
       "type": "path"
     },
@@ -237,18 +237,13 @@
       "type": "path"
     },
     "node_097": {
-      "x": 705.1,
-      "y": 532.2,
+      "x": 699.6,
+      "y": 531.6,
       "type": "path"
     },
     "node_098": {
       "x": 748.1,
       "y": 531.8,
-      "type": "path"
-    },
-    "node_099": {
-      "x": 471.2,
-      "y": 522.9,
       "type": "path"
     },
     "node_100": {
@@ -496,11 +491,6 @@
       "y": 509.6,
       "type": "destination"
     },
-    "node_149": {
-      "x": 477.3,
-      "y": 427.4,
-      "type": "path"
-    },
     "node_150": {
       "x": 476,
       "y": 407.5,
@@ -532,8 +522,8 @@
       "type": "path"
     },
     "node_156": {
-      "x": 576.5,
-      "y": 408.4,
+      "x": 562.4,
+      "y": 407.8,
       "type": "path"
     },
     "node_157": {
@@ -1161,69 +1151,9 @@
       "y": 397.8,
       "type": "destination"
     },
-    "node_295": {
-      "x": 633.1,
-      "y": 423.7,
-      "type": "path"
-    },
-    "node_296": {
-      "x": 646.6,
-      "y": 447,
-      "type": "path"
-    },
-    "node_297": {
-      "x": 480.9,
-      "y": 453.7,
-      "type": "path"
-    },
-    "node_298": {
-      "x": 499.8,
-      "y": 427.4,
-      "type": "path"
-    },
-    "node_299": {
-      "x": 491.3,
-      "y": 439,
-      "type": "path"
-    },
-    "node_300": {
-      "x": 638.6,
-      "y": 454.9,
-      "type": "path"
-    },
-    "node_301": {
-      "x": 626.4,
-      "y": 439,
-      "type": "path"
-    },
-    "node_302": {
-      "x": 617.2,
-      "y": 423.1,
-      "type": "path"
-    },
-    "node_303": {
-      "x": 512.1,
-      "y": 418.2,
-      "type": "path"
-    },
     "node_304": {
       "x": 639.2,
       "y": 587.4,
-      "type": "path"
-    },
-    "node_305": {
-      "x": 646.2,
-      "y": 569.6,
-      "type": "path"
-    },
-    "node_306": {
-      "x": 630.6,
-      "y": 574.6,
-      "type": "path"
-    },
-    "node_307": {
-      "x": 654.8,
-      "y": 551.8,
       "type": "path"
     },
     "node_308": {
@@ -1239,16 +1169,6 @@
     "node_310": {
       "x": 466.9,
       "y": 564.7,
-      "type": "path"
-    },
-    "node_311": {
-      "x": 482.5,
-      "y": 572.3,
-      "type": "path"
-    },
-    "node_312": {
-      "x": 476.4,
-      "y": 551.7,
       "type": "path"
     },
     "node_313": {
@@ -1390,6 +1310,26 @@
       "x": 157.5,
       "y": 509.6,
       "type": "destination"
+    },
+    "node_341": {
+      "x": 659.7,
+      "y": 437,
+      "type": "path"
+    },
+    "node_342": {
+      "x": 482.7,
+      "y": 560.3,
+      "type": "path"
+    },
+    "node_343": {
+      "x": 562.6,
+      "y": 429.1,
+      "type": "destination"
+    },
+    "node_344": {
+      "x": 564.5,
+      "y": 569.1,
+      "type": "destination"
     }
   },
   "edges": [
@@ -1504,14 +1444,6 @@
     {
       "from": "node_040",
       "to": "node_090"
-    },
-    {
-      "from": "node_039",
-      "to": "node_099"
-    },
-    {
-      "from": "node_090",
-      "to": "node_099"
     },
     {
       "from": "node_086",
@@ -1746,20 +1678,12 @@
       "to": "node_042"
     },
     {
-      "from": "node_149",
-      "to": "node_150"
-    },
-    {
       "from": "node_041",
       "to": "node_153"
     },
     {
       "from": "node_153",
       "to": "node_042"
-    },
-    {
-      "from": "node_153",
-      "to": "node_149"
     },
     {
       "from": "node_154",
@@ -1776,10 +1700,6 @@
     {
       "from": "node_157",
       "to": "node_158"
-    },
-    {
-      "from": "node_162",
-      "to": "node_163"
     },
     {
       "from": "node_163",
@@ -2334,144 +2254,12 @@
       "to": "node_158"
     },
     {
-      "from": "node_154",
-      "to": "node_298"
-    },
-    {
-      "from": "node_298",
-      "to": "node_149"
-    },
-    {
-      "from": "node_149",
-      "to": "node_299"
-    },
-    {
-      "from": "node_298",
-      "to": "node_299"
-    },
-    {
-      "from": "node_299",
-      "to": "node_297"
-    },
-    {
-      "from": "node_297",
-      "to": "node_153"
-    },
-    {
-      "from": "node_149",
-      "to": "node_297"
-    },
-    {
-      "from": "node_297",
-      "to": "node_041"
-    },
-    {
-      "from": "node_157",
-      "to": "node_295"
-    },
-    {
-      "from": "node_295",
-      "to": "node_162"
-    },
-    {
-      "from": "node_162",
-      "to": "node_296"
-    },
-    {
-      "from": "node_296",
-      "to": "node_295"
-    },
-    {
-      "from": "node_158",
-      "to": "node_295"
-    },
-    {
-      "from": "node_163",
-      "to": "node_296"
-    },
-    {
-      "from": "node_157",
-      "to": "node_302"
-    },
-    {
-      "from": "node_301",
-      "to": "node_302"
-    },
-    {
-      "from": "node_302",
-      "to": "node_295"
-    },
-    {
-      "from": "node_295",
-      "to": "node_301"
-    },
-    {
-      "from": "node_301",
-      "to": "node_296"
-    },
-    {
-      "from": "node_300",
-      "to": "node_296"
-    },
-    {
-      "from": "node_163",
-      "to": "node_300"
-    },
-    {
-      "from": "node_300",
-      "to": "node_301"
-    },
-    {
-      "from": "node_154",
-      "to": "node_303"
-    },
-    {
-      "from": "node_298",
-      "to": "node_303"
-    },
-    {
-      "from": "node_303",
-      "to": "node_155"
-    },
-    {
-      "from": "node_302",
-      "to": "node_160"
-    },
-    {
       "from": "node_094",
       "to": "node_304"
     },
     {
       "from": "node_304",
       "to": "node_095"
-    },
-    {
-      "from": "node_094",
-      "to": "node_306"
-    },
-    {
-      "from": "node_306",
-      "to": "node_304"
-    },
-    {
-      "from": "node_304",
-      "to": "node_305"
-    },
-    {
-      "from": "node_305",
-      "to": "node_306"
-    },
-    {
-      "from": "node_307",
-      "to": "node_305"
-    },
-    {
-      "from": "node_305",
-      "to": "node_095"
-    },
-    {
-      "from": "node_307",
-      "to": "node_096"
     },
     {
       "from": "node_095",
@@ -2504,30 +2292,6 @@
     {
       "from": "node_310",
       "to": "node_091"
-    },
-    {
-      "from": "node_090",
-      "to": "node_312"
-    },
-    {
-      "from": "node_312",
-      "to": "node_310"
-    },
-    {
-      "from": "node_310",
-      "to": "node_311"
-    },
-    {
-      "from": "node_311",
-      "to": "node_312"
-    },
-    {
-      "from": "node_091",
-      "to": "node_311"
-    },
-    {
-      "from": "node_311",
-      "to": "node_193"
     },
     {
       "from": "node_042",
@@ -2684,6 +2448,38 @@
     {
       "from": "node_340",
       "to": "node_337"
+    },
+    {
+      "from": "node_162",
+      "to": "node_341"
+    },
+    {
+      "from": "node_341",
+      "to": "node_163"
+    },
+    {
+      "from": "node_157",
+      "to": "node_341"
+    },
+    {
+      "from": "node_153",
+      "to": "node_154"
+    },
+    {
+      "from": "node_090",
+      "to": "node_342"
+    },
+    {
+      "from": "node_342",
+      "to": "node_193"
+    },
+    {
+      "from": "node_343",
+      "to": "node_156"
+    },
+    {
+      "from": "node_093",
+      "to": "node_344"
     }
   ],
   "destinations": {
@@ -2867,14 +2663,6 @@
       "node": "node_144",
       "pic": ""
     },
-    "to second floor": {
-      "node": "node_249",
-      "pic": ""
-    },
-    "to ground floor": {
-      "node": "node_248",
-      "pic": ""
-    },
     "AF 166": {
       "node": "node_330",
       "pic": ""
@@ -3005,6 +2793,30 @@
     },
     "Neurology Reception": {
       "node": "node_109",
+      "pic": ""
+    },
+    "to ground floor(right)": {
+      "node": "node_248",
+      "pic": ""
+    },
+    "to second floor (right)": {
+      "node": "node_249",
+      "pic": ""
+    },
+    "to second floor (left)": {
+      "node": "node_148",
+      "pic": ""
+    },
+    "to ground floor (left)": {
+      "node": "node_147",
+      "pic": ""
+    },
+    "Lift 1&2": {
+      "node": "node_343",
+      "pic": ""
+    },
+    "Lift 3&4&5": {
+      "node": "node_344",
       "pic": ""
     }
   }

@@ -412,8 +412,8 @@
       "type": "path"
     },
     "node_092": {
-      "x": 523.6,
-      "y": 337.8,
+      "x": 528.8,
+      "y": 338.2,
       "type": "path"
     },
     "node_093": {
@@ -1170,6 +1170,11 @@
       "x": 762,
       "y": 527.3,
       "type": "path"
+    },
+    "node_245": {
+      "x": 528.3,
+      "y": 367.2,
+      "type": "destination"
     }
   },
   "edges": [
@@ -2148,6 +2153,10 @@
     {
       "from": "node_244",
       "to": "node_237"
+    },
+    {
+      "from": "node_092",
+      "to": "node_245"
     }
   ],
   "destinations": {
@@ -2391,10 +2400,6 @@
       "node": "node_167",
       "pic": ""
     },
-    "Way to Fourth Floor": {
-      "node": "node_170",
-      "pic": ""
-    },
     "Main Reception 1": {
       "node": "node_172",
       "pic": ""
@@ -2403,16 +2408,8 @@
       "node": "node_173",
       "pic": ""
     },
-    "Way to forth floor": {
-      "node": "node_180",
-      "pic": ""
-    },
     "Lift1": {
       "node": "node_174",
-      "pic": ""
-    },
-    "Lift": {
-      "node": "node_178",
       "pic": ""
     },
     "Bone Marrow Transplant Dept": {
@@ -2437,6 +2434,22 @@
     },
     "House Keeping": {
       "node": "node_227",
+      "pic": ""
+    },
+    "Way to Fourth Floor (right)": {
+      "node": "node_170",
+      "pic": ""
+    },
+    "Way to forth floor (left)": {
+      "node": "node_180",
+      "pic": ""
+    },
+    "Lift 1&2": {
+      "node": "node_245",
+      "pic": ""
+    },
+    "Lift3&4&5": {
+      "node": "node_178",
       "pic": ""
     }
   }
