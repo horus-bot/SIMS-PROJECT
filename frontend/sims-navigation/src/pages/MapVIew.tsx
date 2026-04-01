@@ -70,6 +70,7 @@ const MapView = () => {
 
   const isCrossFloor = originFloorParam !== destFloorParam;
   const [connectorMode, setConnectorMode] = useState<ConnectorMode | null>(null);
+  const [selectedConnectorName, setSelectedConnectorName] = useState<string | null>(null);
   const [crossFloorPhase, setCrossFloorPhase] = useState<"single-floor" | "mode-selection" | "to-connector" | "await-transfer" | "to-final">(
     isCrossFloor ? "mode-selection" : "single-floor",
   );
@@ -160,6 +161,35 @@ const MapView = () => {
     [getConnectorCandidates],
   );
 
+  const normalizeConnectorVariant = useCallback((name: string, mode: ConnectorMode) => {
+    const lower = name.toLowerCase().trim();
+    const keyword = mode === "stairs" ? "stairs" : "lift";
+    const stripped = lower.replace(keyword, "").replace(/\s+/g, " ").trim();
+    return stripped;
+  }, []);
+
+  const pickConnectorBySameVariant = useCallback(
+    (floorId: string, mode: ConnectorMode, sourceConnectorName: string | null, fallbackFromNodeId: string | null) => {
+      const candidates = getConnectorCandidates(floorId, mode);
+      if (!candidates.length) return null;
+      if (!sourceConnectorName) return pickNearestConnector(floorId, mode, fallbackFromNodeId);
+
+      const sourceVariant = normalizeConnectorVariant(sourceConnectorName, mode);
+      const exactVariantMatch = candidates.find((c) => normalizeConnectorVariant(c.name, mode) === sourceVariant);
+      if (exactVariantMatch) return exactVariantMatch;
+
+      // Graceful fallback for slight naming differences across floors.
+      const looseMatch = candidates.find((c) => {
+        const v = normalizeConnectorVariant(c.name, mode);
+        return !!sourceVariant && !!v && (v.includes(sourceVariant) || sourceVariant.includes(v));
+      });
+      if (looseMatch) return looseMatch;
+
+      return pickNearestConnector(floorId, mode, fallbackFromNodeId);
+    },
+    [getConnectorCandidates, pickNearestConnector, normalizeConnectorVariant],
+  );
+
   const connectorTarget = useMemo(() => {
     if (!isCrossFloor || !connectorMode || crossFloorPhase !== "to-connector") return null;
     return pickNearestConnector(originFloorParam, connectorMode, originId || null);
@@ -170,6 +200,7 @@ const MapView = () => {
     setActiveOriginRef(rawOrigin);
     setActiveDestRef(rawDest);
     setConnectorMode(null);
+    setSelectedConnectorName(null);
     setCrossFloorPhase(isCrossFloor ? "mode-selection" : "single-floor");
   }, [originFloorParam, destFloorParam, rawOrigin, rawDest, isCrossFloor]);
 
@@ -177,6 +208,7 @@ const MapView = () => {
     if (!isCrossFloor || !connectorMode || crossFloorPhase !== "to-connector") return;
     if (!connectorTarget) return;
     setActiveDestRef(connectorTarget.nodeId);
+    setSelectedConnectorName(connectorTarget.name);
   }, [isCrossFloor, connectorMode, crossFloorPhase, connectorTarget]);
 
   const startNode = useMemo(() => effectiveNodeMap[effectiveOriginId || ""] || { x: 785, y: 924 }, [effectiveOriginId, effectiveNodeMap]);
@@ -522,7 +554,12 @@ const MapView = () => {
     if (!connectorMode) return;
     const targetFloor = floors[destFloorParam];
     const finalDestNode = targetFloor ? (targetFloor.destinations[rawDest || ""]?.node || rawDest) : rawDest;
-    const destConnector = pickNearestConnector(destFloorParam, connectorMode, finalDestNode || null);
+    const destConnector = pickConnectorBySameVariant(
+      destFloorParam,
+      connectorMode,
+      selectedConnectorName,
+      finalDestNode || null,
+    );
     if (!destConnector) {
       setCrossFloorPhase("to-final");
       setCurrentFloorId(destFloorParam);
