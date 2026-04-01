@@ -2799,7 +2799,7 @@
       "node": "node_248",
       "pic": ""
     },
-    "to second floor (right)": {
+    "stairs right": {
       "node": "node_249",
       "pic": ""
     },
@@ -2807,15 +2807,15 @@
       "node": "node_148",
       "pic": ""
     },
-    "to ground floor (left)": {
+    "stairs left": {
       "node": "node_147",
       "pic": ""
     },
-    "Lift 1&2": {
+    "lift back": {
       "node": "node_343",
       "pic": ""
     },
-    "Lift 3&4&5": {
+    "lift central": {
       "node": "node_344",
       "pic": ""
     }

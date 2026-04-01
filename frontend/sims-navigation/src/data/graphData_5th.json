@@ -2436,19 +2436,19 @@
       "node": "node_227",
       "pic": ""
     },
-    "Way to Fourth Floor (right)": {
+    "right stairs)": {
       "node": "node_170",
       "pic": ""
     },
-    "Way to forth floor (left)": {
+    "left stairs": {
       "node": "node_180",
       "pic": ""
     },
-    "Lift 1&2": {
+    "lift back": {
       "node": "node_245",
       "pic": ""
     },
-    "Lift3&4&5": {
+    "lift central": {
       "node": "node_178",
       "pic": ""
     }

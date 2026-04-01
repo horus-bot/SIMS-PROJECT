@@ -223,13 +223,18 @@ export default function Landing() {
       const destInfo = searchScopedDestinationsWithFloor.find(d => d.name === name)
         || allDestinationsWithFloor.find(d => d.name === name);
       const floor = destInfo ? destInfo.floor : "test";
+      const originFloor = origin
+        ? (allDestinationsWithFloor.find(d => d.name === origin)?.floor || floor)
+        : floor;
 
       // Save to recent
       const updated = [name, ...recentDestinations.filter(d => d !== name)].slice(0, 5);
       setRecentDestinations(updated);
       localStorage.setItem("recent_destinations", JSON.stringify(updated));
       
-      navigate(`/map-view?origin=${encodeURIComponent(origin || "")}&dest=${encodeURIComponent(name)}&floor=${floor}`);
+      navigate(
+        `/map-view?originName=${encodeURIComponent(origin || "")}&originFloor=${encodeURIComponent(originFloor)}&destName=${encodeURIComponent(name)}&destFloor=${encodeURIComponent(floor)}`,
+      );
     }
   };
 
@@ -285,7 +290,10 @@ export default function Landing() {
       if (newOrigin && newDest) {
         const destInfo = allDestinationsWithFloor.find(d => d.name === newDest);
         const floor = destInfo ? destInfo.floor : "test";
-        navigate(`/map-view?origin=${encodeURIComponent(newOrigin)}&dest=${encodeURIComponent(newDest)}&floor=${floor}`);
+        const originFloor = allDestinationsWithFloor.find(d => d.name === newOrigin)?.floor || floor;
+        navigate(
+          `/map-view?originName=${encodeURIComponent(newOrigin)}&originFloor=${encodeURIComponent(originFloor)}&destName=${encodeURIComponent(newDest)}&destFloor=${encodeURIComponent(floor)}`,
+        );
       } else {
         const params: Record<string, string> = {};
         if (newOrigin) params.origin = newOrigin;

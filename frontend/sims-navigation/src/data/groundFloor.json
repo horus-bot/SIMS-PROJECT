@@ -1061,19 +1061,19 @@
       "node": "node_098",
       "pic": ""
     },
-    "To First Floor (left)": {
+    "stairs left": {
       "node": "node_085",
       "pic": ""
     },
-    "To First Floor (right)": {
+    "stairs right": {
       "node": "node_099",
       "pic": ""
     },
-    "Lift 1&2": {
+    "lift back": {
       "node": "node_020",
       "pic": ""
     },
-    "lift 3&4&5": {
+    "lift central": {
       "node": "node_102",
       "pic": ""
     },

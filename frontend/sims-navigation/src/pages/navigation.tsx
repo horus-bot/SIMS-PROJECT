@@ -82,8 +82,8 @@ const NavigationPage = () => {
   useEffect(() => {
     if (!rooms.length) return;
 
-    const originFromUrl = searchParams.get("origin");
-    const destFromUrl = searchParams.get("dest");
+    const originFromUrl = searchParams.get("originName") || searchParams.get("origin");
+    const destFromUrl = searchParams.get("destName") || searchParams.get("dest");
 
     if (originFromUrl) {
       const originMatch = rooms.find((r) => r.name === originFromUrl);
@@ -110,7 +110,9 @@ const NavigationPage = () => {
 
   const startNavigation = () => {
     if (!origin || !destination) return;
-    navigate(`/map-view?origin=${encodeURIComponent(origin.name)}&dest=${encodeURIComponent(destination.name)}&floor=${destination.floorId}`);
+    navigate(
+      `/map-view?originName=${encodeURIComponent(origin.name)}&originFloor=${encodeURIComponent(origin.floorId)}&destName=${encodeURIComponent(destination.name)}&destFloor=${encodeURIComponent(destination.floorId)}`,
+    );
   };
 
   // Compute floor data for the map picker — use destination floor if chosen, else first available floor

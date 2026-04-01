@@ -5023,10 +5023,7 @@
       "node": "node_483",
       "pic": ""
     },
-    "Lift - 7": {
-      "node": "node_484",
-      "pic": ""
-    },
+   
     "Staff toilet": {
       "node": "node_485",
       "pic": ""
@@ -5035,10 +5032,7 @@
       "node": "node_489",
       "pic": ""
     },
-    "Lift -6": {
-      "node": "node_490",
-      "pic": ""
-    },
+   
     "Store room": {
       "node": "node_501",
       "pic": ""
@@ -5063,7 +5057,7 @@
       "node": "node_512",
       "pic": ""
     },
-    "Lift3&4&5": {
+    "lift central": {
       "node": "node_533",
       "pic": ""
     },
@@ -5079,15 +5073,15 @@
       "node": "node_537",
       "pic": ""
     },
-    "Way to fifth (left)": {
+    "stairs left": {
       "node": "node_534",
       "pic": ""
     },
-    "Way to third floor (left)": {
+    "stairs right": {
       "node": "node_535",
       "pic": ""
     },
-    "Lift 1&2": {
+    "lift back": {
       "node": "node_538",
       "pic": ""
     }

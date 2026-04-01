@@ -28,6 +28,7 @@ interface TestData {
 }
 type NodeType = { x: number; y: number; type: string };
 type EdgeType = { from: string; to: string };
+type ConnectorMode = "stairs" | "lift";
 
 const dataModules = import.meta.glob('../data/*.json', { eager: true });
 
@@ -58,11 +59,22 @@ const MapView = () => {
   const [isNavActive, setIsNavActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
-  const floorParam = searchParams.get("floor") || "test";
-  const typedTestData = floors[floorParam] || floors["test"];
+  const rawOrigin = searchParams.get("originName") || searchParams.get("origin");
+  const rawDest = searchParams.get("destName") || searchParams.get("dest");
+  const originFloorParam = searchParams.get("originFloor") || searchParams.get("floor") || "test";
+  const destFloorParam = searchParams.get("destFloor") || searchParams.get("floor") || originFloorParam;
+  const [currentFloorId, setCurrentFloorId] = useState(originFloorParam);
 
-  const rawOrigin = searchParams.get("origin");
-  const rawDest = searchParams.get("dest");
+  const [activeOriginRef, setActiveOriginRef] = useState<string | null>(rawOrigin);
+  const [activeDestRef, setActiveDestRef] = useState<string | null>(rawDest);
+
+  const isCrossFloor = originFloorParam !== destFloorParam;
+  const [connectorMode, setConnectorMode] = useState<ConnectorMode | null>(null);
+  const [crossFloorPhase, setCrossFloorPhase] = useState<"single-floor" | "mode-selection" | "to-connector" | "await-transfer" | "to-final">(
+    isCrossFloor ? "mode-selection" : "single-floor",
+  );
+
+  const typedTestData = floors[currentFloorId] || floors["test"];
 
   const destinations = useMemo(
     () => Object.fromEntries(
@@ -71,8 +83,8 @@ const MapView = () => {
     [typedTestData],
   );
   
-  const originId = destinations[rawOrigin || ""] || rawOrigin;
-  const destId = destinations[rawDest || ""] || rawDest;
+  const originId = destinations[activeOriginRef || ""] || activeOriginRef;
+  const destId = destinations[activeDestRef || ""] || activeDestRef;
 
   // overrideOriginId: set when user re-pins during navigation — re-routes from new position
   const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
@@ -117,6 +129,56 @@ const MapView = () => {
       .filter((i): i is { name: string; x: number; y: number; id: string; pic: string } => i !== null);
   }, [destinations, nodeMap, typedTestData]);
 
+  const getConnectorCandidates = useCallback((floorId: string, mode: ConnectorMode) => {
+    const floorData = floors[floorId];
+    if (!floorData) return [] as Array<{ name: string; nodeId: string; x: number; y: number }>;
+    const keyword = mode === "stairs" ? "stairs" : "lift";
+    return Object.entries(floorData.destinations)
+      .filter(([name]) => name.toLowerCase().includes(keyword))
+      .map(([name, info]) => {
+        const node = floorData.nodes[info.node];
+        if (!node) return null;
+        return { name, nodeId: info.node, x: node.x, y: node.y };
+      })
+      .filter((item): item is { name: string; nodeId: string; x: number; y: number } => item !== null);
+  }, []);
+
+  const pickNearestConnector = useCallback(
+    (floorId: string, mode: ConnectorMode, fromNodeId: string | null) => {
+      const floorData = floors[floorId];
+      if (!floorData) return null;
+      const fromNode = fromNodeId ? floorData.nodes[fromNodeId] : null;
+      const candidates = getConnectorCandidates(floorId, mode);
+      if (!candidates.length) return null;
+      if (!fromNode) return candidates[0];
+      return candidates.reduce((best, curr) => {
+        const bestD = Math.hypot(best.x - fromNode.x, best.y - fromNode.y);
+        const currD = Math.hypot(curr.x - fromNode.x, curr.y - fromNode.y);
+        return currD < bestD ? curr : best;
+      });
+    },
+    [getConnectorCandidates],
+  );
+
+  const connectorTarget = useMemo(() => {
+    if (!isCrossFloor || !connectorMode || crossFloorPhase !== "to-connector") return null;
+    return pickNearestConnector(originFloorParam, connectorMode, originId || null);
+  }, [isCrossFloor, connectorMode, crossFloorPhase, pickNearestConnector, originFloorParam, originId]);
+
+  useEffect(() => {
+    setCurrentFloorId(originFloorParam);
+    setActiveOriginRef(rawOrigin);
+    setActiveDestRef(rawDest);
+    setConnectorMode(null);
+    setCrossFloorPhase(isCrossFloor ? "mode-selection" : "single-floor");
+  }, [originFloorParam, destFloorParam, rawOrigin, rawDest, isCrossFloor]);
+
+  useEffect(() => {
+    if (!isCrossFloor || !connectorMode || crossFloorPhase !== "to-connector") return;
+    if (!connectorTarget) return;
+    setActiveDestRef(connectorTarget.nodeId);
+  }, [isCrossFloor, connectorMode, crossFloorPhase, connectorTarget]);
+
   const startNode = useMemo(() => effectiveNodeMap[effectiveOriginId || ""] || { x: 785, y: 924 }, [effectiveOriginId, effectiveNodeMap]);
 
   const routePath = useMemo(() => {
@@ -147,7 +209,7 @@ const MapView = () => {
     setShowInitialPinPrompt(true);
     setOverrideOriginId(null);
     setTempOriginNode(null);
-  }, [originId, destId, floorParam]);
+  }, [originId, destId, currentFloorId]);
 
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
@@ -164,6 +226,12 @@ const MapView = () => {
 
   const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, effectiveNodeMap, effectiveEdges, routePath), [rawPos, effectiveNodeMap, effectiveEdges, routePath]);
   const snappedPos = { x: snapResult.x, y: snapResult.y };
+
+  useEffect(() => {
+    if (isNavActive) return;
+    const originNode = effectiveNodeMap[effectiveOriginId || ""];
+    if (originNode) forceSetPos(originNode.x, originNode.y);
+  }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap, forceSetPos]);
 
   // Invisible moving focus-box around user pointer: only labels inside this box are shown.
   const focusedDestinationMarkers = useMemo(() => {
@@ -444,9 +512,51 @@ const MapView = () => {
   };
   const handleRejectLocation = () => setLocationToConfirm(null);
 
+  const handleChooseConnectorMode = (mode: ConnectorMode) => {
+    setConnectorMode(mode);
+    setCrossFloorPhase("to-connector");
+    setShowInitialPinPrompt(false);
+  };
+
+  const handleConfirmReachedTargetFloor = () => {
+    if (!connectorMode) return;
+    const targetFloor = floors[destFloorParam];
+    const finalDestNode = targetFloor ? (targetFloor.destinations[rawDest || ""]?.node || rawDest) : rawDest;
+    const destConnector = pickNearestConnector(destFloorParam, connectorMode, finalDestNode || null);
+    if (!destConnector) {
+      setCrossFloorPhase("to-final");
+      setCurrentFloorId(destFloorParam);
+      setActiveOriginRef(rawOrigin);
+      setActiveDestRef(rawDest);
+      return;
+    }
+
+    setCurrentFloorId(destFloorParam);
+    setActiveOriginRef(destConnector.nodeId);
+    setActiveDestRef(rawDest);
+    setOverrideOriginId(null);
+    setTempOriginNode(null);
+    setIsNavActive(false);
+    setAutoFollow(true);
+    setCrossFloorPhase("to-final");
+  };
+
+  useEffect(() => {
+    if (!isNavActive) return;
+    if (crossFloorPhase !== "to-connector") return;
+    if (!connectorTarget) return;
+    const d = Math.hypot(snappedPos.x - connectorTarget.x, snappedPos.y - connectorTarget.y);
+    if (d <= 42) {
+      setIsNavActive(false);
+      setCrossFloorPhase("await-transfer");
+    }
+  }, [isNavActive, crossFloorPhase, connectorTarget, snappedPos]);
+
 
 
   const startNavigation = async () => {
+    if (crossFloorPhase === "mode-selection" || crossFloorPhase === "await-transfer") return;
+    if (!routePath.length) return;
     setShowInitialPinPrompt(false);
     if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
       try {
@@ -731,7 +841,8 @@ const MapView = () => {
     setCameraZoom(c.z);
   };
 
-  const hasInvalidRoute = !originId || !destId || routePath.length === 0;
+  const allowNoRouteYet = isCrossFloor && crossFloorPhase === "mode-selection";
+  const hasInvalidRoute = !originId || (!allowNoRouteYet && (!destId || routePath.length === 0));
 
   if (hasInvalidRoute) {
     return (
@@ -843,6 +954,106 @@ const MapView = () => {
         </span>
       </div>
 
+      {isCrossFloor && crossFloorPhase === "mode-selection" && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 24,
+            transform: "translateX(-50%)",
+            width: "min(92vw, 420px)",
+            background: "#ffffff",
+            border: "1px solid #dbeafe",
+            borderRadius: 18,
+            padding: "14px 14px 12px",
+            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
+            zIndex: 700,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
+            Multi-floor route detected
+          </div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
+            We will guide you on {typedTestData.meta.floorName}. Choose how you want to change floors.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => handleChooseConnectorMode("stairs")}
+              style={{
+                flex: 1,
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                color: "#1e40af",
+                borderRadius: 12,
+                padding: "10px 8px",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Use stairs
+            </button>
+            <button
+              onClick={() => handleChooseConnectorMode("lift")}
+              style={{
+                flex: 1,
+                border: "none",
+                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
+                color: "white",
+                borderRadius: 12,
+                padding: "10px 8px",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Use lift
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isCrossFloor && crossFloorPhase === "await-transfer" && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 24,
+            transform: "translateX(-50%)",
+            width: "min(92vw, 420px)",
+            background: "#ffffff",
+            border: "1px solid #dbeafe",
+            borderRadius: 18,
+            padding: "14px 14px 12px",
+            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
+            zIndex: 700,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
+            Reached connector
+          </div>
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
+            Take the {connectorMode || "connector"} to {floors[destFloorParam]?.meta?.floorName || "destination floor"}. Confirm once you reach there.
+          </div>
+          <button
+            onClick={handleConfirmReachedTargetFloor}
+            style={{
+              width: "100%",
+              border: "none",
+              background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
+              color: "white",
+              borderRadius: 12,
+              padding: "11px 10px",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Yes, I reached this floor
+          </button>
+        </div>
+      )}
+
       <button aria-label="Recalibrate with QR" title="Recalibrate with QR" onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 50, height: 50, borderRadius: "50%", background: "white", border: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer" }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
       </button>
@@ -915,7 +1126,7 @@ const MapView = () => {
         </button>
       )}
 
-      {!isNavActive && showInitialPinPrompt && !isRepinning && (
+      {!isNavActive && showInitialPinPrompt && !isRepinning && !isCrossFloor && (
         <div
           style={{
             position: "absolute",
@@ -1111,7 +1322,20 @@ const MapView = () => {
 
       <MapControls onRecenter={handleRecenter} onZoomIn={() => handleZoom("in")} onZoomOut={() => handleZoom("out")} autoFollow={autoFollow} isMuted={isMuted} setIsMuted={setIsMuted} />
 
-      <NavigationMenu isNavActive={isNavActive} onStartNavigation={startNavigation} onStopNavigation={() => setIsNavActive(false)} onPrevStep={handlePrevStep} onNextStep={handleNextStep} destName={rawDest || undefined} totalRem={navState.totalRem} currentSpeed={_currentSpeed} />
+      <NavigationMenu
+        isNavActive={isNavActive}
+        onStartNavigation={startNavigation}
+        onStopNavigation={() => setIsNavActive(false)}
+        onPrevStep={handlePrevStep}
+        onNextStep={handleNextStep}
+        destName={
+          crossFloorPhase === "to-connector" && connectorMode
+            ? `Nearest ${connectorMode}`
+            : (rawDest || undefined)
+        }
+        totalRem={navState.totalRem}
+        currentSpeed={_currentSpeed}
+      />
 
       {locationToConfirm && <LocationConfirmCard room={locationToConfirm.name} image={`/${locationToConfirm.pic}`} onConfirm={handleConfirmLocation} onReject={handleRejectLocation} />}
       {showTurnPopup && isPaused && <TurnConfirmCard onConfirm={handleConfirmTurn} onReject={handleSkipTurn} />}
