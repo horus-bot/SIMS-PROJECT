@@ -354,6 +354,110 @@ const MapView = () => {
     return nearest ? [nearest] : [];
   }, [destinationMarkers, snappedPos, cameraZoom]);
 
+  const labelLayouts = useMemo(() => {
+    if (!focusedDestinationMarkers.length) return [] as Array<{
+      key: string;
+      dest: { name: string; x: number; y: number; id: string; pic: string };
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      fontSize: number;
+      paddingX: number;
+      paddingY: number;
+    }>;
+
+    const placed: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    const layouts: Array<{
+      key: string;
+      dest: { name: string; x: number; y: number; id: string; pic: string };
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      fontSize: number;
+      paddingX: number;
+      paddingY: number;
+    }> = [];
+
+    const normalizedZoom = Math.max(cameraZoom, 0.35);
+    const crowdRatio = Math.min(1, focusedDestinationMarkers.length / MAX_VISIBLE_LABELS);
+    const baseSize = 12 - crowdRatio * 1.4;
+    const zoomScale = Math.max(0.78, Math.min(1.18, normalizedZoom));
+    const sharedSize = Math.max(9, Math.min(13, Math.round(baseSize * zoomScale)));
+    const minGap = 4;
+
+    const intersects = (box: { left: number; top: number; right: number; bottom: number }) => {
+      return placed.some((p) => (
+        !(box.right + minGap <= p.left || box.left >= p.right + minGap || box.bottom + minGap <= p.top || box.top >= p.bottom + minGap)
+      ));
+    };
+
+    focusedDestinationMarkers.forEach((dest, idx) => {
+      const lengthPenalty = dest.name.length > 18 ? 1 : 0;
+      const extraPenalty = dest.name.length > 28 ? 1 : 0;
+      const fontSize = Math.max(9, sharedSize - lengthPenalty - extraPenalty);
+      const paddingX = Math.max(5, Math.round(fontSize * 0.65));
+      const paddingY = Math.max(3, Math.round(fontSize * 0.35));
+      const textWidth = Math.min(170, Math.max(52, Math.round((dest.name.length + 2) * fontSize * 0.56)));
+      const width = textWidth + paddingX * 2;
+      const height = fontSize + paddingY * 2 + 2;
+
+      const baseYOffset = 14;
+      const candidates = [
+        { dx: 0, dy: -baseYOffset },
+        { dx: 0, dy: -(baseYOffset + height + minGap) },
+        { dx: -Math.round(width * 0.55), dy: -baseYOffset },
+        { dx: Math.round(width * 0.55), dy: -baseYOffset },
+        { dx: 0, dy: -(baseYOffset + 2 * (height + minGap)) },
+      ];
+
+      let placedBox: { left: number; top: number; right: number; bottom: number } | null = null;
+      for (const c of candidates) {
+        const left = dest.x + c.dx - width / 2;
+        const top = dest.y + c.dy - height;
+        const box = { left, top, right: left + width, bottom: top + height };
+        if (!intersects(box)) {
+          placedBox = box;
+          break;
+        }
+      }
+
+      // Fallback keeps moving label upward until there is no collision.
+      if (!placedBox) {
+        let top = dest.y - baseYOffset - height;
+        const left = dest.x - width / 2;
+        let guard = 0;
+        while (guard < 60) {
+          const box = { left, top, right: left + width, bottom: top + height };
+          if (!intersects(box)) {
+            placedBox = box;
+            break;
+          }
+          top -= (height + minGap);
+          guard++;
+        }
+        if (!placedBox) {
+          placedBox = { left, top, right: left + width, bottom: top + height };
+        }
+      }
+
+      placed.push(placedBox);
+      layouts.push({
+        key: `${dest.id}-${idx}`,
+        dest,
+        left: placedBox.left,
+        top: placedBox.top,
+        width,
+        height,
+        fontSize,
+        paddingX,
+        paddingY,
+      });
+    });
+
+    return layouts;
+  }, [focusedDestinationMarkers, cameraZoom]);
   // Keep live-tracking position constrained on graph edges so user movement follows JSON network.
   useEffect(() => {
     if (!isNavActive) return;
@@ -1128,44 +1232,59 @@ const MapView = () => {
       )}
 
       {isCrossFloor && crossFloorPhase === "await-transfer" && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 24,
-            transform: "translateX(-50%)",
-            width: "min(92vw, 420px)",
-            background: "#ffffff",
-            border: "1px solid #dbeafe",
-            borderRadius: 18,
-            padding: "14px 14px 12px",
-            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
-            zIndex: 700,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
-            Reached connector
-          </div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
-            Take the {connectorMode || "connector"} to {floors[destFloorParam]?.meta?.floorName || "destination floor"}. Confirm once you reach there.
-          </div>
-          <button
-            onClick={handleConfirmReachedTargetFloor}
+        <>
+          {/* Small confirm card (kept for accessibility) */}
+          <div
             style={{
-              width: "100%",
-              border: "none",
-              background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
-              color: "white",
-              borderRadius: 12,
-              padding: "11px 10px",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
+              position: "absolute",
+              left: 20,
+              right: 20,
+              bottom: 24,
+              margin: "0 auto",
+              width: "min(92vw, 420px)",
+              background: "#ffffff",
+              border: "1px solid #dbeafe",
+              borderRadius: 14,
+              padding: "12px 12px",
+              boxShadow: "0 12px 28px rgba(15,23,42,0.16)",
+              zIndex: 700,
             }}
           >
-            Yes, I reached this floor
-          </button>
-        </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
+              Reached connector
+            </div>
+            <div style={{ fontSize: 12, color: "#475569", marginBottom: 10, lineHeight: 1.4 }}>
+              Take the {connectorMode || "connector"} to {floors[destFloorParam]?.meta?.floorName || "destination floor"}. Confirm once you reach there.
+            </div>
+            <button
+              onClick={handleConfirmReachedTargetFloor}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
+                color: "white",
+                borderRadius: 10,
+                padding: "10px 10px",
+                fontWeight: 800,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Yes, I reached this floor
+            </button>
+          </div>
+
+          {/* Large centered overlay (Google Maps style) */}
+          <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 780 }}>
+            <div style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+              <div style={{ background: "rgba(255,255,255,0.98)", padding: "22px 28px", borderRadius: 18, boxShadow: "0 20px 40px rgba(2,6,23,0.2)", display: "flex", flexDirection: "column", alignItems: "center", minWidth: 220 }}>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 6 }}>Take the {connectorMode || "connector"} to</div>
+                <div style={{ fontSize: 56, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{floors[destFloorParam]?.meta?.floorName || destFloorParam}</div>
+                <div style={{ fontSize: 13, color: "#475569", marginTop: 6 }}>Confirm when you reach this floor</div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       <button aria-label="Recalibrate with QR" title="Recalibrate with QR" onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 50, height: 50, borderRadius: "50%", background: "white", border: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer" }}>
@@ -1201,10 +1320,32 @@ const MapView = () => {
                   }}
                 />
               )}
-              {focusedDestinationMarkers.map((dest) => (
-                <div key={dest.name} onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
-                  style={{ position: "absolute", left: dest.x, top: dest.y, transform: "translate(-50%, -100%)", background: "white", padding: "6px 9px", borderRadius: 10, fontSize: 12, fontWeight: 600, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.08)", whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", transition: "all 0.2s ease", cursor: "pointer" }}>
-                  📍 {dest.name}
+              {labelLayouts.map((layout, idx) => (
+                <div
+                  key={layout.key}
+                  onClick={() => layout.dest.pic && setSelectedDestination({ name: layout.dest.name, pic: layout.dest.pic })}
+                  style={{
+                    position: "absolute",
+                    left: layout.left,
+                    top: layout.top,
+                    background: "white",
+                    padding: `${layout.paddingY}px ${layout.paddingX}px`,
+                    borderRadius: 8,
+                    fontSize: layout.fontSize,
+                    fontWeight: 600,
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    whiteSpace: "nowrap",
+                    width: layout.width,
+                    maxWidth: layout.width,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    transition: "all 0.16s ease",
+                    cursor: "pointer",
+                    zIndex: 29 + idx,
+                  }}
+                >
+                  📍 {layout.dest.name}
                 </div>
               ))}
               <div style={{ position: "absolute", left: snappedPos.x, top: snappedPos.y, transform: `translate(-50%, -50%) rotate(${heading}deg)`, transition: "transform 120ms linear", willChange: "transform", zIndex: 30 }}>
@@ -1417,12 +1558,15 @@ const MapView = () => {
       )}
 
       {isNavActive && navState.turnType !== "straight" && !isRepinning && (
-        <div style={{ position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", background: "white", padding: "12px 24px", borderRadius: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", zIndex: 100, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#4285F4", display: "flex", alignItems: "center", justifyContent: "center" }}>
-             {navState.turnType === "left" ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>}
-          </div>
-          <div style={{ fontWeight: 700, color: "#1e293b" }}>
-            {navState.turnType === "finish" ? `Arrive in ${Math.round(navState.distToTurn)}m` : `Turn ${navState.turnType} in ${Math.round(navState.distToTurn)}m`}
+        <div style={{ position: "absolute", top: 72, left: "50%", transform: "translateX(-50%)", zIndex: 860, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "linear-gradient(180deg,#ffffff,#f7fbff)", padding: "14px 18px", borderRadius: 18, boxShadow: "0 24px 48px rgba(2,6,23,0.18)", minWidth: 280, display: "flex", gap: 14, alignItems: "center" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 14, background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 900, fontSize: 28 }}>
+              {navState.turnType === "left" ? "←" : navState.turnType === "right" ? "→" : "↑"}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{navState.turnType === "finish" ? `Arrive in ${Math.round(navState.distToTurn)}m` : `Turn ${navState.turnType} in ${Math.round(navState.distToTurn)}m`}</div>
+              <div style={{ fontSize: 14, color: "#64748b", marginTop: 4 }}>{navState.turnType === "finish" ? "" : `${Math.round(navState.distToTurn)} m`}</div>
+            </div>
           </div>
         </div>
       )}

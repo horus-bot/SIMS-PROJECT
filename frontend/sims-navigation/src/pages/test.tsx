@@ -4,6 +4,7 @@ import templateData from '../data/template.json';
 import firstfloorData from '../data/graphData_firstfloor.json';
 import fifthFloorData from '../data/graphData_5th.json';
 import { findShortestPath } from '../utils/pathfinding';
+import groundFLoor from '../data/groundFloor.json'
 
 
 type NodeType = 'path' | 'destination';
@@ -39,7 +40,7 @@ const Test: React.FC = () => {
     'five': { label: 'Fifth OG', svg: '/SIMS_MAP_FIVE_OG.svg', data: templateData },
     'firstfloor': { label: 'First Floor', svg: '/firstfloor.svg', data: firstfloorData },
     '5th': { label: '5th Floor', svg: '/5th_floor.svg', data: fifthFloorData },
-    'groundfloor': { label: 'Ground Floor', svg: '/groundfloor.svg', data: templateData }
+    'groundfloor': { label: 'Ground Floor', svg: '/groundfloor.svg', data:groundFLoor  }
   };
 
   const [mapData, setMapData] = useState<MapData>(() => {
