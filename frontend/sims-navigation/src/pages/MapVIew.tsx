@@ -46,8 +46,8 @@ Object.entries(dataModules).forEach(([path, mod]) => {
 });
 
 const FIXED_PITCH = 0;
-const MAX_INITIAL_ZOOM = 2.05;  // closer default load while keeping route context visible
-const INITIAL_ZOOM_BOOST = 1.26;
+const MAX_INITIAL_ZOOM = 4;  // balanced zoom level for good detail without being too close
+const INITIAL_ZOOM_BOOST = 2;
 const DRAG_DISABLE_AUTOFOLLOW_THRESHOLD_PX = 8;
 const LABEL_FOCUS_BOX_WIDTH = 320;
 const LABEL_FOCUS_BOX_HEIGHT = 220;
@@ -271,7 +271,29 @@ const MapView = () => {
     return findShortestPath(effectiveOriginId, destId, effectiveNodeMap, effectiveEdges);
   }, [effectiveOriginId, destId, effectiveNodeMap, effectiveEdges]);
 
-  const routePoints = useMemo(() => routePath.map((id) => effectiveNodeMap[id]).filter(Boolean), [routePath, effectiveNodeMap]);
+  const routePathInfo = useMemo(() => {
+    const points: Array<{ x: number; y: number }> = [];
+    const validIds: string[] = [];
+    const cumulativeDist: number[] = [];
+    let tot = 0;
+
+    for (let i = 0; i < routePath.length; i++) {
+      const id = routePath[i];
+      const node = effectiveNodeMap[id];
+      if (node) {
+        if (points.length > 0) {
+          const prev = points[points.length - 1];
+          tot += Math.hypot(node.x - prev.x, node.y - prev.y);
+        }
+        points.push(node);
+        validIds.push(id);
+        cumulativeDist.push(tot);
+      }
+    }
+    return { points, validIds, cumulativeDist, totalDist: tot };
+  }, [routePath, effectiveNodeMap]);
+
+  const routePoints = routePathInfo.points;
 
   const [actualPath, setActualPath] = useState<{ x: number; y: number }[]>([]);
   const [isDeviated, setIsDeviated] = useState(false);
@@ -293,7 +315,23 @@ const MapView = () => {
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
   const skipNextInitialPinPromptRef = useRef(false);
 
+  // Moved up camera refs & states since they're used in effectiveViewCenter early on
+  const camState = useRef({ x: 0, y: 0, zoom: 1, bearing: 0 });
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const map3DRef = useRef<HTMLDivElement>(null);
+  const cameraLayerRef = useRef<HTMLDivElement>(null);
+  const [autoFollow, setAutoFollow] = useState(true);
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pointerStart = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const isManualGesture = useRef(false);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const lastPinch = useRef<number | null>(null);
+
   const syncCameraZoom = useCallback((nextZoom: number, immediate = false) => {
+    // Prevent excessive React re-renders by enforcing a minimum diff or `immediate`
+    if (!immediate && Math.abs(cameraZoomRef.current - nextZoom) < 0.05) {
+      return; 
+    }
     cameraZoomRef.current = nextZoom;
     if (immediate) {
       if (zoomRafRef.current !== null) {
@@ -352,6 +390,29 @@ const MapView = () => {
     if (originNode) forceSetPos(originNode.x, originNode.y);
   }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap, forceSetPos]);
 
+  const [viewCenter, setViewCenter] = useState<{x: number, y: number} | null>(null);
+
+  const throttledUpdateViewCenter = useMemo(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    return () => {
+      if (timeout) return;
+      timeout = setTimeout(() => {
+        timeout = null;
+        if (!viewportRef.current) return;
+        const vp = viewportRef.current;
+        const { x: camX, y: camY, zoom } = camState.current;
+        const cx = (vp.clientWidth / 2 - camX) / zoom;
+        const cy = (vp.clientHeight / 2 - camY) / zoom;
+        setViewCenter({ x: cx, y: cy });
+      }, 80);
+    };
+  }, []);
+
+  const effectiveViewCenter = useMemo(() => {
+    if (autoFollow || !viewCenter) return snappedPos;
+    return viewCenter;
+  }, [autoFollow, viewCenter, snappedPos]);
+
   // Invisible moving focus-box around user pointer: only labels inside this box are shown.
   const dynamicVisibleLabelCap = useMemo(() => {
     if (cameraZoom < 0.55) return 2;
@@ -368,10 +429,10 @@ const MapView = () => {
     const halfW = (LABEL_FOCUS_BOX_WIDTH / normalizedZoom) / 2;
     const halfH = (LABEL_FOCUS_BOX_HEIGHT / normalizedZoom) / 2;
     const inBox = destinationMarkers
-      .filter((dest) => Math.abs(dest.x - snappedPos.x) <= halfW && Math.abs(dest.y - snappedPos.y) <= halfH)
+      .filter((dest) => Math.abs(dest.x - effectiveViewCenter.x) <= halfW && Math.abs(dest.y - effectiveViewCenter.y) <= halfH)
       .sort((a, b) => {
-        const da = Math.hypot(a.x - snappedPos.x, a.y - snappedPos.y);
-        const db = Math.hypot(b.x - snappedPos.x, b.y - snappedPos.y);
+        const da = Math.hypot(a.x - effectiveViewCenter.x, a.y - effectiveViewCenter.y);
+        const db = Math.hypot(b.x - effectiveViewCenter.x, b.y - effectiveViewCenter.y);
         return da - db;
       });
 
@@ -379,13 +440,13 @@ const MapView = () => {
 
     // Keep one nearby label when box is empty so context is not lost.
     const nearest = destinationMarkers.reduce((best, curr) => {
-      const bestDist = Math.hypot(best.x - snappedPos.x, best.y - snappedPos.y);
-      const currDist = Math.hypot(curr.x - snappedPos.x, curr.y - snappedPos.y);
+      const bestDist = Math.hypot(best.x - effectiveViewCenter.x, best.y - effectiveViewCenter.y);
+      const currDist = Math.hypot(curr.x - effectiveViewCenter.x, curr.y - effectiveViewCenter.y);
       return currDist < bestDist ? curr : best;
     });
 
     return nearest ? [nearest] : [];
-  }, [destinationMarkers, snappedPos, cameraZoom, dynamicVisibleLabelCap]);
+  }, [destinationMarkers, effectiveViewCenter, cameraZoom, dynamicVisibleLabelCap]);
 
   const labelLayouts = useMemo(() => {
     if (!focusedDestinationMarkers.length) return [] as Array<{
@@ -502,23 +563,35 @@ const MapView = () => {
     }
   }, [isNavActive, rawPos.x, rawPos.y, snappedPos.x, snappedPos.y, forceSetPos]);
 
+  const nearestRouteIndex = useMemo(() => {
+    if (!routePathInfo.points.length) return 0;
+    let bestIdx = 0;
+    let minDist = Infinity;
+
+    // Use the valid points array directly to save map lookups
+    routePathInfo.points.forEach((node, idx) => {
+      const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
+      if (dist < minDist) {
+        minDist = dist;
+        bestIdx = idx;
+      }
+    });
+
+    return bestIdx;
+  }, [routePathInfo, snappedPos]);
+
   const navState = useMemo(() => {
-    if (!routePath.length) return { turnType: "straight", distToTurn: 0, totalRem: 0 };
+    if (!routePathInfo.points.length) return { turnType: "straight", distToTurn: 0, totalRem: 0 };
+    
     let turnType = "straight";
     let distToTurn = 0;
-    let currentIdx = 0;
-    let minD = Infinity;
-    routePath.forEach((id, idx) => {
-      const n = effectiveNodeMap[id];
-      if (!n) return;
-      const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
-      if (d < minD) { minD = d; currentIdx = idx; }
-    });
-    for (let i = currentIdx; i < routePath.length - 1; i++) {
-      const curr = effectiveNodeMap[routePath[i]];
-      const next = effectiveNodeMap[routePath[i + 1]];
-      const after = routePath[i + 2] ? effectiveNodeMap[routePath[i + 2]] : null;
-      if (!curr || !next) continue;
+    const currentIdx = nearestRouteIndex;
+    const points = routePathInfo.points;
+
+    for (let i = currentIdx; i < points.length - 1; i++) {
+      const curr = points[i];
+      const next = points[i + 1];
+      const after = points[i + 2] || null;
       distToTurn += Math.hypot(curr.x - next.x, curr.y - next.y);
       if (after) {
         const a1 = Math.atan2(next.y - curr.y, next.x - curr.x);
@@ -529,46 +602,28 @@ const MapView = () => {
         if (Math.abs(diff) > 0.5) { turnType = diff > 0 ? "right" : "left"; break; }
       }
     }
-    if (currentIdx >= routePath.length - 1) turnType = "finish";
-    let totalRem = 0;
-    for (let i = currentIdx; i < routePath.length - 1; i++) {
-      const n1 = effectiveNodeMap[routePath[i]];
-      const n2 = effectiveNodeMap[routePath[i + 1]];
-      if (n1 && n2) totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
-    }
+
+    if (currentIdx >= points.length - 1) turnType = "finish";
+    
+    // O(1) remaining distance lookup
+    const totalRem = routePathInfo.totalDist - (routePathInfo.cumulativeDist[currentIdx] || 0);
     const PX_PER_M = 12.2;
-    return { turnType, distToTurn: Math.max(0, distToTurn / PX_PER_M), totalRem: Math.max(0, totalRem / PX_PER_M) };
-  }, [snappedPos, routePath, effectiveNodeMap]);
+    
+    return { 
+      turnType, 
+      distToTurn: Math.max(0, distToTurn / PX_PER_M), 
+      totalRem: Math.max(0, totalRem / PX_PER_M) 
+    };
+  }, [routePathInfo, nearestRouteIndex]);
 
   const progress = useMemo(() => {
-    if (!routePath.length || !snappedPos) return 0;
-    const PX_PER_M = 12.2;
-    const totalDist = routePoints.reduce((acc, p, i) => {
-      if (i === 0) return 0;
-      const prev = routePoints[i - 1];
-      return acc + Math.hypot(p.x - prev.x, p.y - prev.y);
-    }, 0);
-    const remDist = navState.totalRem * PX_PER_M;
+    if (!routePathInfo.points.length || !snappedPos) return 0;
+    const totalDist = routePathInfo.totalDist;
+    if (totalDist === 0) return 100;
+    
+    const remDist = routePathInfo.totalDist - (routePathInfo.cumulativeDist[nearestRouteIndex] || 0);
     return Math.min(100, Math.max(0, 100 - (remDist / totalDist) * 100));
-  }, [navState.totalRem, routePath, snappedPos, routePoints]);
-
-  const nearestRouteIndex = useMemo(() => {
-    if (!routePath.length) return 0;
-    let bestIdx = 0;
-    let minDist = Infinity;
-
-    routePath.forEach((id, idx) => {
-      const node = effectiveNodeMap[id];
-      if (!node) return;
-      const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
-      if (dist < minDist) {
-        minDist = dist;
-        bestIdx = idx;
-      }
-    });
-
-    return bestIdx;
-  }, [routePath, effectiveNodeMap, snappedPos]);
+  }, [routePathInfo, nearestRouteIndex, snappedPos]);
 
   useEffect(() => {
     if (!isNavActive) return;
@@ -820,17 +875,6 @@ const MapView = () => {
     setIsDeviated(false);
   };
 
-  const camState = useRef({ x: 0, y: 0, zoom: 1, bearing: 0 });
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const map3DRef = useRef<HTMLDivElement>(null);
-  const cameraLayerRef = useRef<HTMLDivElement>(null);
-  const [autoFollow, setAutoFollow] = useState(true);
-  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pointerStart = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const isManualGesture = useRef(false);
-  const lastPointer = useRef<{ x: number; y: number } | null>(null);
-  const lastPinch = useRef<number | null>(null);
-
   const beginManualGestureControl = () => {
     if (isManualGesture.current) return;
     isManualGesture.current = true;
@@ -1022,6 +1066,7 @@ const MapView = () => {
         camState.current.x = finalC.x;
         camState.current.y = finalC.y;
         syncCameraZoom(finalC.z);
+        throttledUpdateViewCenter();
       }
       lastPinch.current = dist;
       return;
@@ -1049,6 +1094,7 @@ const MapView = () => {
       camState.current.x = c.x;
       camState.current.y = c.y;
       lastPointer.current = { x: e.clientX, y: e.clientY };
+      throttledUpdateViewCenter();
       if (isRepinning) debouncedRepinEval(); // live-evaluate while user pans in repin mode
     }
   };
@@ -1091,6 +1137,7 @@ const MapView = () => {
     camState.current.x = c.x;
     camState.current.y = c.y;
     syncCameraZoom(c.z);
+    throttledUpdateViewCenter();
   };
 
   const allowNoRouteYet = isCrossFloor && crossFloorPhase === "mode-selection";
