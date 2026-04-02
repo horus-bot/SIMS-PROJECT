@@ -151,8 +151,17 @@ const MapView = () => {
       const fromNode = fromNodeId ? floorData.nodes[fromNodeId] : null;
       const candidates = getConnectorCandidates(floorId, mode);
       if (!candidates.length) return null;
-      if (!fromNode) return candidates[0];
-      return candidates.reduce((best, curr) => {
+
+      // Lift mode must always prefer central lift when available.
+      const effectiveCandidates = mode === "lift"
+        ? (() => {
+            const central = candidates.filter((c) => c.name.toLowerCase().includes("central"));
+            return central.length ? central : candidates;
+          })()
+        : candidates;
+
+      if (!fromNode) return effectiveCandidates[0];
+      return effectiveCandidates.reduce((best, curr) => {
         const bestD = Math.hypot(best.x - fromNode.x, best.y - fromNode.y);
         const currD = Math.hypot(curr.x - fromNode.x, curr.y - fromNode.y);
         return currD < bestD ? curr : best;
@@ -160,6 +169,13 @@ const MapView = () => {
     },
     [getConnectorCandidates],
   );
+
+  const getStairsSide = useCallback((name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.includes("left")) return "left";
+    if (lower.includes("right")) return "right";
+    return "unknown";
+  }, []);
 
   const normalizeConnectorVariant = useCallback((name: string, mode: ConnectorMode) => {
     const lower = name.toLowerCase().trim();
@@ -172,6 +188,42 @@ const MapView = () => {
     (floorId: string, mode: ConnectorMode, sourceConnectorName: string | null, fallbackFromNodeId: string | null) => {
       const candidates = getConnectorCandidates(floorId, mode);
       if (!candidates.length) return null;
+
+      if (mode === "lift") {
+        // Always lock to central lift across floors.
+        const central = candidates.filter((c) => c.name.toLowerCase().includes("central"));
+        if (central.length) {
+          if (!fallbackFromNodeId) return central[0];
+          const floorData = floors[floorId];
+          const fromNode = floorData?.nodes[fallbackFromNodeId || ""];
+          if (!fromNode) return central[0];
+          return central.reduce((best, curr) => {
+            const bestD = Math.hypot(best.x - fromNode.x, best.y - fromNode.y);
+            const currD = Math.hypot(curr.x - fromNode.x, curr.y - fromNode.y);
+            return currD < bestD ? curr : best;
+          });
+        }
+        return pickNearestConnector(floorId, mode, fallbackFromNodeId);
+      }
+
+      if (mode === "stairs" && sourceConnectorName) {
+        const side = getStairsSide(sourceConnectorName);
+        if (side !== "unknown") {
+          const sameSide = candidates.filter((c) => getStairsSide(c.name) === side);
+          if (sameSide.length) {
+            if (!fallbackFromNodeId) return sameSide[0];
+            const floorData = floors[floorId];
+            const fromNode = floorData?.nodes[fallbackFromNodeId || ""];
+            if (!fromNode) return sameSide[0];
+            return sameSide.reduce((best, curr) => {
+              const bestD = Math.hypot(best.x - fromNode.x, best.y - fromNode.y);
+              const currD = Math.hypot(curr.x - fromNode.x, curr.y - fromNode.y);
+              return currD < bestD ? curr : best;
+            });
+          }
+        }
+      }
+
       if (!sourceConnectorName) return pickNearestConnector(floorId, mode, fallbackFromNodeId);
 
       const sourceVariant = normalizeConnectorVariant(sourceConnectorName, mode);
@@ -187,13 +239,13 @@ const MapView = () => {
 
       return pickNearestConnector(floorId, mode, fallbackFromNodeId);
     },
-    [getConnectorCandidates, pickNearestConnector, normalizeConnectorVariant],
+    [getConnectorCandidates, pickNearestConnector, normalizeConnectorVariant, getStairsSide],
   );
 
   const connectorTarget = useMemo(() => {
     if (!isCrossFloor || !connectorMode || crossFloorPhase !== "to-connector") return null;
-    return pickNearestConnector(originFloorParam, connectorMode, originId || null);
-  }, [isCrossFloor, connectorMode, crossFloorPhase, pickNearestConnector, originFloorParam, originId]);
+    return pickNearestConnector(originFloorParam, connectorMode, effectiveOriginId || null);
+  }, [isCrossFloor, connectorMode, crossFloorPhase, pickNearestConnector, originFloorParam, effectiveOriginId]);
 
   useEffect(() => {
     setCurrentFloorId(originFloorParam);
@@ -236,12 +288,21 @@ const MapView = () => {
   const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
   const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
+  const skipNextInitialPinPromptRef = useRef(false);
 
   useEffect(() => {
-    setShowInitialPinPrompt(true);
+    if (skipNextInitialPinPromptRef.current) {
+      skipNextInitialPinPromptRef.current = false;
+      setShowInitialPinPrompt(false);
+    } else {
+      setShowInitialPinPrompt(true);
+    }
+    // Reset only when a fresh route request comes in via URL params.
+    // Avoid resetting on internal state transitions (e.g., connector target selection),
+    // which can otherwise reopen the pin/connector flow repeatedly.
     setOverrideOriginId(null);
     setTempOriginNode(null);
-  }, [originId, destId, currentFloorId]);
+  }, [rawOrigin, rawDest, originFloorParam, destFloorParam]);
 
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
@@ -437,9 +498,13 @@ const MapView = () => {
 
     if (repinModeSource === "initial") {
       setShowInitialPinPrompt(false);
-      setTimeout(() => {
-        startNavigation();
-      }, 0);
+      if (isCrossFloor) {
+        setCrossFloorPhase("mode-selection");
+      } else {
+        setTimeout(() => {
+          startNavigation();
+        }, 0);
+      }
     }
   };
 
@@ -548,6 +613,9 @@ const MapView = () => {
     setConnectorMode(mode);
     setCrossFloorPhase("to-connector");
     setShowInitialPinPrompt(false);
+    setTimeout(() => {
+      startNavigation();
+    }, 0);
   };
 
   const handleConfirmReachedTargetFloor = () => {
@@ -562,12 +630,17 @@ const MapView = () => {
     );
     if (!destConnector) {
       setCrossFloorPhase("to-final");
+      skipNextInitialPinPromptRef.current = true;
       setCurrentFloorId(destFloorParam);
       setActiveOriginRef(rawOrigin);
       setActiveDestRef(rawDest);
+      setTimeout(() => {
+        startNavigation();
+      }, 0);
       return;
     }
 
+    skipNextInitialPinPromptRef.current = true;
     setCurrentFloorId(destFloorParam);
     setActiveOriginRef(destConnector.nodeId);
     setActiveDestRef(rawDest);
@@ -576,6 +649,9 @@ const MapView = () => {
     setIsNavActive(false);
     setAutoFollow(true);
     setCrossFloorPhase("to-final");
+    setTimeout(() => {
+      startNavigation();
+    }, 0);
   };
 
   useEffect(() => {
@@ -991,7 +1067,7 @@ const MapView = () => {
         </span>
       </div>
 
-      {isCrossFloor && crossFloorPhase === "mode-selection" && (
+      {isCrossFloor && crossFloorPhase === "mode-selection" && !showInitialPinPrompt && !isRepinning && !!tempOriginNode && (
         <div
           style={{
             position: "absolute",
@@ -999,19 +1075,20 @@ const MapView = () => {
             bottom: 24,
             transform: "translateX(-50%)",
             width: "min(92vw, 420px)",
-            background: "#ffffff",
-            border: "1px solid #dbeafe",
-            borderRadius: 18,
-            padding: "14px 14px 12px",
-            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
+            background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+            border: "1px solid #bfdbfe",
+            borderRadius: 20,
+            padding: "15px 15px 13px",
+            boxShadow: "0 20px 36px rgba(15,23,42,0.2)",
             zIndex: 700,
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
-            Multi-floor route detected
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 10px rgba(37,99,235,0.5)" }} />
+            Choose How To Change Floors
           </div>
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
-            We will guide you on {typedTestData.meta.floorName}. Choose how you want to change floors.
+            Origin pinned on {typedTestData.meta.floorName}. Now select your preferred connector.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -1163,7 +1240,7 @@ const MapView = () => {
         </button>
       )}
 
-      {!isNavActive && showInitialPinPrompt && !isRepinning && !isCrossFloor && (
+      {!isNavActive && showInitialPinPrompt && !isRepinning && (
         <div
           style={{
             position: "absolute",
@@ -1171,43 +1248,32 @@ const MapView = () => {
             bottom: 24,
             transform: "translateX(-50%)",
             width: "min(92vw, 380px)",
-            background: "#ffffff",
-            border: "1px solid #dbeafe",
-            borderRadius: 18,
-            padding: "14px 14px 12px",
-            boxShadow: "0 16px 30px rgba(15,23,42,0.18)",
+            background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+            border: "1px solid #bfdbfe",
+            borderRadius: 20,
+            padding: "16px 14px 13px",
+            boxShadow: "0 20px 36px rgba(15,23,42,0.2)",
             zIndex: 620,
             color: "#0f172a",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Confirm your exact start point</div>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 10px rgba(37,99,235,0.5)" }} />
+            Confirm Your Start Point
+          </div>
           <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
-            Move the pin on map like Uber, then we will start navigation from that point.
+            {isCrossFloor
+              ? "Pin your origin location first. Next, you will choose lift or stairs."
+              : "Pin your current location and we will start navigation from that exact point."}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setShowInitialPinPrompt(false)}
-              style={{
-                flex: 1,
-                border: "1px solid #bfdbfe",
-                background: "#eff6ff",
-                color: "#1e40af",
-                borderRadius: 12,
-                padding: "10px 8px",
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Keep current origin
-            </button>
             <button
               onClick={() => {
                 setShowInitialPinPrompt(false);
                 startRepinMode("initial");
               }}
               style={{
-                flex: 1,
+                width: "100%",
                 border: "none",
                 background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
                 color: "white",
@@ -1218,7 +1284,7 @@ const MapView = () => {
                 cursor: "pointer",
               }}
             >
-              Pin my location
+              Pin My Location
             </button>
           </div>
         </div>
@@ -1236,7 +1302,11 @@ const MapView = () => {
             display: 'flex', alignItems: 'center', gap: 12,
           }}>
             <button
-              onClick={() => { setIsRepinning(false); setRepinNearest(null); }}
+              onClick={() => {
+                setIsRepinning(false);
+                setRepinNearest(null);
+                if (repinModeSource === "initial") setShowInitialPinPrompt(true);
+              }}
               style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '50%',
                 width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d4ed8', fontSize: 16 }}
