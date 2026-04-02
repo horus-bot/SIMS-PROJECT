@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 
-const AUTO_DISMISS_MS = 10000;
+const AUTO_DISMISS_MS = 4000;
 const AUTO_DISMISS_SECONDS = Math.floor(AUTO_DISMISS_MS / 1000);
 
 interface LocationConfirmCardProps {

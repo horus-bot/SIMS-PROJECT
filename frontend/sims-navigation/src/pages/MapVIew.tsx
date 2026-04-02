@@ -46,12 +46,13 @@ Object.entries(dataModules).forEach(([path, mod]) => {
 });
 
 const FIXED_PITCH = 0;
-const MAX_INITIAL_ZOOM = 1.7;  // slightly closer on load for better readability
-const INITIAL_ZOOM_BOOST = 1.12;
+const MAX_INITIAL_ZOOM = 2.05;  // closer default load while keeping route context visible
+const INITIAL_ZOOM_BOOST = 1.26;
 const DRAG_DISABLE_AUTOFOLLOW_THRESHOLD_PX = 8;
 const LABEL_FOCUS_BOX_WIDTH = 320;
 const LABEL_FOCUS_BOX_HEIGHT = 220;
 const MAX_VISIBLE_LABELS = 6;
+const MIN_LABEL_SPACING = 6;
 
 const MapView = () => {
   const navigate = useNavigate();
@@ -285,10 +286,35 @@ const MapView = () => {
   const [isRecalibrating, setIsRecalibrating] = useState(false);
   const [isRepinning, setIsRepinning] = useState(false);
   const [cameraZoom, setCameraZoom] = useState(1);
+  const cameraZoomRef = useRef(1);
+  const zoomRafRef = useRef<number | null>(null);
   const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
   const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
   const skipNextInitialPinPromptRef = useRef(false);
+
+  const syncCameraZoom = useCallback((nextZoom: number, immediate = false) => {
+    cameraZoomRef.current = nextZoom;
+    if (immediate) {
+      if (zoomRafRef.current !== null) {
+        cancelAnimationFrame(zoomRafRef.current);
+        zoomRafRef.current = null;
+      }
+      setCameraZoom(nextZoom);
+      return;
+    }
+    if (zoomRafRef.current !== null) return;
+    zoomRafRef.current = requestAnimationFrame(() => {
+      zoomRafRef.current = null;
+      setCameraZoom(cameraZoomRef.current);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (zoomRafRef.current !== null) cancelAnimationFrame(zoomRafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (skipNextInitialPinPromptRef.current) {
@@ -327,6 +353,13 @@ const MapView = () => {
   }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap, forceSetPos]);
 
   // Invisible moving focus-box around user pointer: only labels inside this box are shown.
+  const dynamicVisibleLabelCap = useMemo(() => {
+    if (cameraZoom < 0.55) return 2;
+    if (cameraZoom < 0.8) return 3;
+    if (cameraZoom < 1.15) return 4;
+    return MAX_VISIBLE_LABELS;
+  }, [cameraZoom]);
+
   const focusedDestinationMarkers = useMemo(() => {
     if (!destinationMarkers.length) return [];
 
@@ -342,7 +375,7 @@ const MapView = () => {
         return da - db;
       });
 
-    if (inBox.length > 0) return inBox.slice(0, MAX_VISIBLE_LABELS);
+    if (inBox.length > 0) return inBox.slice(0, dynamicVisibleLabelCap);
 
     // Keep one nearby label when box is empty so context is not lost.
     const nearest = destinationMarkers.reduce((best, curr) => {
@@ -352,7 +385,7 @@ const MapView = () => {
     });
 
     return nearest ? [nearest] : [];
-  }, [destinationMarkers, snappedPos, cameraZoom]);
+  }, [destinationMarkers, snappedPos, cameraZoom, dynamicVisibleLabelCap]);
 
   const labelLayouts = useMemo(() => {
     if (!focusedDestinationMarkers.length) return [] as Array<{
@@ -382,10 +415,10 @@ const MapView = () => {
 
     const normalizedZoom = Math.max(cameraZoom, 0.35);
     const crowdRatio = Math.min(1, focusedDestinationMarkers.length / MAX_VISIBLE_LABELS);
-    const baseSize = 12 - crowdRatio * 1.4;
+    const baseSize = 7.5 - crowdRatio * 1.4;
     const zoomScale = Math.max(0.78, Math.min(1.18, normalizedZoom));
-    const sharedSize = Math.max(9, Math.min(13, Math.round(baseSize * zoomScale)));
-    const minGap = 4;
+    const sharedSize = Math.max(7, Math.min(10, Math.round(baseSize * zoomScale)));
+    const minGap = MIN_LABEL_SPACING;
 
     const intersects = (box: { left: number; top: number; right: number; bottom: number }) => {
       return placed.some((p) => (
@@ -396,10 +429,10 @@ const MapView = () => {
     focusedDestinationMarkers.forEach((dest, idx) => {
       const lengthPenalty = dest.name.length > 18 ? 1 : 0;
       const extraPenalty = dest.name.length > 28 ? 1 : 0;
-      const fontSize = Math.max(9, sharedSize - lengthPenalty - extraPenalty);
-      const paddingX = Math.max(5, Math.round(fontSize * 0.65));
-      const paddingY = Math.max(3, Math.round(fontSize * 0.35));
-      const textWidth = Math.min(170, Math.max(52, Math.round((dest.name.length + 2) * fontSize * 0.56)));
+      const fontSize = Math.max(6, sharedSize - lengthPenalty - extraPenalty);
+      const paddingX = Math.max(4, Math.round(fontSize * 0.55));
+      const paddingY = Math.max(2, Math.round(fontSize * 0.25));
+      const textWidth = Math.min(140, Math.max(44, Math.round((dest.name.length + 2) * fontSize * 0.52)));
       const width = textWidth + paddingX * 2;
       const height = fontSize + paddingY * 2 + 2;
 
@@ -437,9 +470,11 @@ const MapView = () => {
           top -= (height + minGap);
           guard++;
         }
-        if (!placedBox) {
-          placedBox = { left, top, right: left + width, bottom: top + height };
-        }
+      }
+
+      // Hard guarantee: never render overlapping labels.
+      if (!placedBox) {
+        return;
       }
 
       placed.push(placedBox);
@@ -845,7 +880,7 @@ const MapView = () => {
       });
 
       camState.current = { x: camX, y: camY, zoom, bearing: 0 };
-      setCameraZoom(zoom);
+      syncCameraZoom(zoom, true);
     } else {
       // No route: fit entire map to screen at a comfortable level
       const { w: MAP_W, h: MAP_H } = mapBounds;
@@ -853,9 +888,9 @@ const MapView = () => {
       const z = Math.min(zFit * (INITIAL_ZOOM_BOOST + 0.03), MAX_INITIAL_ZOOM);
       camState.current = { x: 0, y: 0, zoom: z, bearing: 0 };
       gsap.set(cameraLayerRef.current, { x: 0, y: 0, scale: z });
-      setCameraZoom(z);
+      syncCameraZoom(z, true);
     }
-  }, [routePoints]);
+  }, [routePoints, mapBounds, syncCameraZoom]);
 
   useEffect(() => {
     if (!autoFollow || !viewportRef.current) return;
@@ -986,7 +1021,7 @@ const MapView = () => {
         camState.current.zoom = finalC.z;
         camState.current.x = finalC.x;
         camState.current.y = finalC.y;
-        setCameraZoom(finalC.z);
+        syncCameraZoom(finalC.z);
       }
       lastPinch.current = dist;
       return;
@@ -1055,7 +1090,7 @@ const MapView = () => {
     camState.current.zoom = c.z;
     camState.current.x = c.x;
     camState.current.y = c.y;
-    setCameraZoom(c.z);
+    syncCameraZoom(c.z);
   };
 
   const allowNoRouteYet = isCrossFloor && crossFloorPhase === "mode-selection";
@@ -1130,7 +1165,7 @@ const MapView = () => {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", overflow: "hidden", background: "#f8fafc", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, width: "100vw", height: "100dvh", overflow: "hidden", background: "linear-gradient(180deg, #f6f9fc 0%, #edf3fa 100%)", fontFamily: "'Google Sans', 'Roboto', system-ui, sans-serif" }}>
       {isNavActive && (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, background: "rgba(0,0,0,0.05)", zIndex: 1000 }}>
           <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #4285F4, #34A853)" }} />
@@ -1146,11 +1181,11 @@ const MapView = () => {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          background: "rgba(255,255,255,0.92)",
-          border: "1px solid #e2e8f0",
+          background: "rgba(255,255,255,0.95)",
+          border: "1px solid #d7e3f3",
           borderRadius: 999,
-          padding: "7px 10px",
-          boxShadow: "0 6px 18px rgba(15,23,42,0.12)",
+          padding: "8px 11px",
+          boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
           zIndex: 520,
           backdropFilter: "blur(8px)",
           WebkitBackdropFilter: "blur(8px)",
@@ -1287,7 +1322,7 @@ const MapView = () => {
         </>
       )}
 
-      <button aria-label="Recalibrate with QR" title="Recalibrate with QR" onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 50, height: 50, borderRadius: "50%", background: "white", border: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer" }}>
+      <button aria-label="Recalibrate with QR" title="Recalibrate with QR" onClick={() => setIsRecalibrating(true)} style={{ position: "absolute", right: 20, top: 80, width: 52, height: 52, borderRadius: "50%", background: "rgba(255,255,255,0.96)", border: "1px solid #d7e3f3", boxShadow: "0 8px 18px rgba(15,23,42,0.12)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500, cursor: "pointer", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
       </button>
 
@@ -1301,7 +1336,7 @@ const MapView = () => {
         <div ref={viewportRef} style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden", touchAction: "none" }}
           onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
           <div ref={map3DRef} style={{ width: "100%", height: "100%" }}>
-            <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0" }}>
+            <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
               <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
               {tempOriginNode && (
                 <div
@@ -1330,19 +1365,20 @@ const MapView = () => {
                     top: layout.top,
                     background: "white",
                     padding: `${layout.paddingY}px ${layout.paddingX}px`,
-                    borderRadius: 8,
+                    borderRadius: 6,
                     fontSize: layout.fontSize,
                     fontWeight: 600,
-                    border: "1px solid #e2e8f0",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    border: "1px solid #dbe7f5",
+                    boxShadow: "0 6px 14px rgba(15,23,42,0.12)",
                     whiteSpace: "nowrap",
                     width: layout.width,
                     maxWidth: layout.width,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    transition: "all 0.16s ease",
+                    transition: "opacity 0.16s ease, transform 0.16s ease",
                     cursor: "pointer",
                     zIndex: 29 + idx,
+                    userSelect: "none",
                   }}
                 >
                   📍 {layout.dest.name}
@@ -1365,9 +1401,9 @@ const MapView = () => {
           onClick={() => startRepinMode("lost")}
           style={{
             position: 'absolute', right: 20, top: 140,
-            width: 50, height: 50, borderRadius: '50%',
+            width: 52, height: 52, borderRadius: '50%',
             background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)',
-            border: 'none', boxShadow: '0 2px 12px rgba(37,99,235,0.4)',
+            border: '1px solid rgba(255,255,255,0.7)', boxShadow: '0 10px 22px rgba(37,99,235,0.36)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 500, cursor: 'pointer', flexDirection: 'column',
           }}
