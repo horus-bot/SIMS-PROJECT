@@ -2,18 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { Kalman2D } from "../utils/kalman2d";
 
 const PIXELS_PER_METER = 12.2; 
-const STRIDE_METERS = 0.6; // Reduced to limit speed to ~1m/s
-// const STRIDE_PX = STRIDE_METERS * PIXELS_PER_METER;
+const STRIDE_METERS = 0.6; 
 const SENSITIVITY = 0.9; 
-const STEP_COOLDOWN = 600; // Keep at 600ms for ~1 step/s max
-const HEADING_SMOOTHING = 0.1;
-const HEADING_DEADZONE_DEG = 1.2;
+const STEP_COOLDOWN = 600; 
+
+const HEADING_SMOOTHING = 0.05; 
+const HEADING_DEADZONE_DEG = 2.5; 
 const HEADING_MAX_TURN_RATE_DEG_PER_SEC = 90;
 
 let alpha = 0.8; 
 let gravity = { x: 0, y: 0, z: 0 };
 
-// Added initialMapAngle: 0 = Up, 90 = Right, 180 = Down, 270 = Left
 export const usePDR = (
   initialX: number,
   initialY: number,
@@ -23,36 +22,38 @@ export const usePDR = (
   isPaused: boolean = false,
   nodesMap: Record<string, { x: number; y: number; type?: string }> = {},
 ) => {
-  const [rawPos, setRawPos] = useState({ x: initialX, y: initialY });
+  // ✅ Safeguard initialization against NaN
+  const startX = isNaN(initialX) ? 0 : initialX;
+  const startY = isNaN(initialY) ? 0 : initialY;
+
+  const [rawPos, setRawPos] = useState({ x: startX, y: startY });
   const [heading, setHeading] = useState(0);
-  const [currentSpeed, setCurrentSpeed] = useState(0); // m/s
+  const [currentSpeed, setCurrentSpeed] = useState(0); 
   const speedResetTimer = useRef<NodeJS.Timeout | null>(null);
   
-  // This ref stores the difference between physical North and Map North
   const calibrationOffset = useRef<number | null>(null);
   
   const headingRef = useRef(0);
   const lastHeadingTs = useRef<number>(Date.now());
   const lastAccel = useRef(0);
-  const lastStepTime = useRef(0);
-  const rawPosRef = useRef({ x: initialX, y: initialY });
-  const kfRef = useRef(new Kalman2D(initialX, initialY));
+  // ✅ Prevent NaN explosion on the first step by initializing with Date.now()
+  const lastStepTime = useRef(Date.now()); 
+  const rawPosRef = useRef({ x: startX, y: startY });
+  const kfRef = useRef(new Kalman2D(startX, startY));
   
-  // Dynamic Stride Estimation
   const strideHistory = useRef<number[]>([]); 
   const currentStride = useRef(STRIDE_METERS); 
 
   const forceSetPos = (x: number, y: number) => {
+    if (isNaN(x) || isNaN(y)) return;
     const newPos = { x, y };
     setRawPos(newPos);
     rawPosRef.current = newPos;
     kfRef.current.setState(x, y);
   };
 
-  // Preset pointer heading to the initial route direction so the marker starts aligned.
   useEffect(() => {
     if (routePath.length < 2) return;
-
     const startNode = nodesMap[routePath[0]];
     const nextNode = nodesMap[routePath[1]];
     if (!startNode || !nextNode) return;
@@ -91,89 +92,59 @@ export const usePDR = (
 
       const now = Date.now();
       if (delta > SENSITIVITY && (now - lastStepTime.current > STEP_COOLDOWN)) {
-        // Calculate step frequency (steps per second)
-        const dt = (now - lastStepTime.current) / 1000; 
+        const rawDt = (now - lastStepTime.current) / 1000; 
+        const dt = Math.min(rawDt, 2.0); // Safety cap
         
-        // Dynamic Stride Estimation (Weinberg approach approximation: height * freq_factor, or just linear with freq)
-        // Simplified: Stride Length = K * frequency + C
         if (dt > 0) {
              const freq = 1 / dt; 
-             // 0.4 const base, 0.371 coefficient is a common estimation parameter
              const estimatedStride = 0.4 + 0.371 * freq; 
              
              strideHistory.current.push(estimatedStride);
              if (strideHistory.current.length > 5) strideHistory.current.shift();
              
-             // Average for smoothness
              currentStride.current = strideHistory.current.reduce((a, b) => a + b, 0) / strideHistory.current.length;
-             
-             // Calculate Speed (m/s)
              const speed = currentStride.current * freq;
              setCurrentSpeed(speed);
 
-             // Reset speed if no step for 2 seconds
              if (speedResetTimer.current) clearTimeout(speedResetTimer.current);
              speedResetTimer.current = setTimeout(() => setCurrentSpeed(0), 2000);
         }
 
-        // Use current smoothed heading for step direction
-        // This heading is already heavily biased towards the route
         const rad = (headingRef.current * Math.PI) / 180;
-        
         const dynamicStridePx = currentStride.current * PIXELS_PER_METER;
 
         let stepX = Math.sin(rad) * dynamicStridePx;
         let stepY = -Math.cos(rad) * dynamicStridePx;
 
-        // --- STEP WEIGHTING (Pull towards next node) ---
-        const nodes = nodesMap as any;
-        let closestIdx = -1;
-        let minDist = Infinity;
-        routePath.forEach((nodeId, idx) => {
-           const n = nodes[nodeId];
-           if(n) {
-               const d = Math.hypot(n.x - rawPosRef.current.x, n.y - rawPosRef.current.y);
-               if(d < minDist) { minDist = d; closestIdx = idx; }
-           }
-        });
-
-        if (closestIdx !== -1 && closestIdx < routePath.length - 1) {
-             const nextNode = nodes[routePath[closestIdx + 1]];
-             const distToNext = Math.hypot(nextNode.x - rawPosRef.current.x, nextNode.y - rawPosRef.current.y);
-             if (distToNext > 0) {
-                 const pullX = (nextNode.x - rawPosRef.current.x) / distToNext;
-                 const pullY = (nextNode.y - rawPosRef.current.y) / distToNext;
-                 
-                 // Add 20% pull towards destination to step
-                 const WEIGHT = 0.20; 
-                 stepX = stepX * (1-WEIGHT) + (pullX * dynamicStridePx) * WEIGHT;
-                 stepY = stepY * (1-WEIGHT) + (pullY * dynamicStridePx) * WEIGHT;
-             }
-        }
+        // Position Freedom: 0.0 weighting
+        const WEIGHT = 0.0; 
+        stepX = stepX * (1-WEIGHT);
+        stepY = stepY * (1-WEIGHT);
 
         const newX = rawPosRef.current.x + stepX;
         const newY = rawPosRef.current.y + stepY;
 
-        // KALMAN FILTER STEP
-        if (dt > 0 && dt < 2.0) { // Safety check for reasonable dt
-             kfRef.current.predict(dt); 
-             kfRef.current.update(newX, newY);
-             
-             const filtered = kfRef.current.position;
-             
-             setRawPos(filtered);
-             rawPosRef.current = filtered;
-        } else {
-             // Fallback for first step or huge lags
-             const newPos = { x: newX, y: newY };
-             setRawPos(newPos);
-             rawPosRef.current = newPos;
-             kfRef.current.setState(newX, newY);
+        // ✅ CRITICAL NaN SAFEGUARD: Do not corrupt the map position
+        if (!isNaN(newX) && !isNaN(newY)) {
+          if (dt > 0 && dt < 2.0) { 
+               kfRef.current.predict(dt); 
+               kfRef.current.update(newX, newY);
+               
+               const filtered = kfRef.current.position;
+               if (!isNaN(filtered.x) && !isNaN(filtered.y)) {
+                   setRawPos(filtered);
+                   rawPosRef.current = filtered;
+               }
+          } else {
+               const newPos = { x: newX, y: newY };
+               setRawPos(newPos);
+               rawPosRef.current = newPos;
+               kfRef.current.setState(newX, newY);
+          }
         }
         
         lastStepTime.current = now;
-        // if (window.navigator.vibrate) window.navigator.vibrate(40); // User requested no vibration
-      }  // Added missing closing brace for the if statement
+      } 
     };
 
     const handleOrientation = (e: any) => {
@@ -184,51 +155,13 @@ export const usePDR = (
         rawCompass = 360 - e.alpha;
       }
 
-      // --- POC ALIGNMENT LOGIC ---
       if (calibrationOffset.current === null && rawCompass !== 0) {
-        // Calculate the fixed offset between the device and the map
         calibrationOffset.current = rawCompass - initialMapAngle;
       }
 
-      const relativeHeading = (rawCompass - (calibrationOffset.current || 0) + 90 + 360) % 360;
+      // Compass Freedom: target heading relies purely on hardware
+      const targetHeading = (rawCompass - (calibrationOffset.current || 0) + 90 + 360) % 360;
 
-      // Compute ideal heading towards NEXT route node
-      const nodes = nodesMap as any;
-      let closestIdx = -1;
-      let minDist = Infinity;
-      routePath.forEach((nodeId, idx) => {
-        const node = nodes[nodeId];
-        if (node) {
-          const dist = Math.hypot(node.x - rawPosRef.current.x, node.y - rawPosRef.current.y);
-          if (dist < minDist) {
-            minDist = dist;
-            closestIdx = idx;
-          }
-        }
-      });
-
-      let targetHeading = relativeHeading; // default to magnetometer
-      
-      // If we have a reachable next node, align heading to the PATH segment
-      if (closestIdx !== -1 && closestIdx < routePath.length - 1) {
-        const nextNode = nodes[routePath[closestIdx + 1]];
-        const dx = nextNode.x - rawPosRef.current.x;
-        const dy = nextNode.y - rawPosRef.current.y;
-        
-        // Calculate angle to next node (0=Up, 90=Right)
-        // dx, -dy converts screen coords (y down) to cartesian (y up) for atan2
-        const idealHeading = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-        
-        let error = idealHeading - relativeHeading;
-        if (error > 180) error -= 360;
-        if (error < -180) error += 360;
-        
-        // Heavier route bias keeps pointer direction rigid along corridor flow.
-        const HEADING_WEIGHT = 0.72;
-        targetHeading = (relativeHeading + error * HEADING_WEIGHT + 360) % 360;
-      }
-
-      // Apply dead-zone + bounded smoothing so heading stays stable without sudden jumps.
       setHeading(prevHeading => {
         const nowTs = Date.now();
         const dt = Math.max(0.016, (nowTs - lastHeadingTs.current) / 1000);
@@ -248,6 +181,10 @@ export const usePDR = (
         const boundedStep = Math.max(-maxStep, Math.min(maxStep, desiredStep));
 
         const smoothed = (prevHeading + boundedStep + 360) % 360;
+        
+        // Final NaN check
+        if (isNaN(smoothed)) return prevHeading;
+        
         headingRef.current = smoothed; 
         return smoothed;
       });

@@ -8,9 +8,11 @@ import {
 import { useNavigate, useSearchParams } from "react-router-dom";
 import gsap from "gsap";
 import TestMap from "../components/map/testMap";
-import { applyCRFConstraints } from "../utils/mapMatching";
 import { findShortestPath } from "../utils/pathfinding";
 import { usePDR } from "../hooks/usePDR";
+
+// ✅ Changed to use the new global free-roaming CRF hook
+import { useCRFNavigation } from "../hooks/useCRFNavigation";
 
 import MapControls from "../components/map-view/MapControls";
 import NavigationMenu from "../components/map-view/NavigationMenu";
@@ -37,7 +39,6 @@ Object.entries(dataModules).forEach(([path, mod]) => {
   const filename = path.split('/').pop()?.replace('.json', '');
   let id = filename || 'unknown';
   
-  // Backward compatibility with legacy IDs
   if (id === 'test_1') id = 'test';
   else if (id === 'graphData_firstfloor') id = 'firstfloor';
   else if (id === 'graphData4th') id = 'fourthfloor';
@@ -55,27 +56,129 @@ const MAX_VISIBLE_LABELS = 6;
 const MIN_LABEL_SPACING = 6;
 
 const MapView = () => {
+  // --------------------------------------------------------
+  // 1. ROUTER & URL PARAMS
+  // --------------------------------------------------------
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [isNavActive, setIsNavActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-
   const rawOrigin = searchParams.get("originName") || searchParams.get("origin");
   const rawDest = searchParams.get("destName") || searchParams.get("dest");
   const originFloorParam = searchParams.get("originFloor") || searchParams.get("floor") || "test";
   const destFloorParam = searchParams.get("destFloor") || searchParams.get("floor") || originFloorParam;
-  const [currentFloorId, setCurrentFloorId] = useState(originFloorParam);
 
+  // --------------------------------------------------------
+  // 2. ALL STATE HOOKS
+  // --------------------------------------------------------
+  const [isNavActive, setIsNavActive] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentFloorId, setCurrentFloorId] = useState(originFloorParam);
   const [activeOriginRef, setActiveOriginRef] = useState<string | null>(rawOrigin);
   const [activeDestRef, setActiveDestRef] = useState<string | null>(rawDest);
-
-  const isCrossFloor = originFloorParam !== destFloorParam;
   const [connectorMode, setConnectorMode] = useState<ConnectorMode | null>(null);
   const [selectedConnectorName, setSelectedConnectorName] = useState<string | null>(null);
   const [crossFloorPhase, setCrossFloorPhase] = useState<"single-floor" | "mode-selection" | "to-connector" | "await-transfer" | "to-final">(
-    isCrossFloor ? "mode-selection" : "single-floor",
+    originFloorParam !== destFloorParam ? "mode-selection" : "single-floor",
   );
+  const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
+  const [tempOriginNode, setTempOriginNode] = useState<{ id: string; x: number; y: number; anchorId: string } | null>(null);
+  const [showInitialPinPrompt, setShowInitialPinPrompt] = useState(true);
+  const [actualPath, setActualPath] = useState<{ x: number; y: number }[]>([]);
+  const [isDeviated, setIsDeviated] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [showTurnPopup, setShowTurnPopup] = useState(false);
+  const [pendingTurnNode, setPendingTurnNode] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [locationToConfirm, setLocationToConfirm] = useState<{ name: string; pic: string } | null>(null);
+  const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
+  const [isRecalibrating, setIsRecalibrating] = useState(false);
+  const [isRepinning, setIsRepinning] = useState(false);
+  const [cameraZoom, setCameraZoom] = useState(1);
+  const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
+  const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
+  const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
+  const [autoFollow, setAutoFollow] = useState(true);
+  const [viewCenter, setViewCenter] = useState<{x: number, y: number} | null>(null);
 
+  // --------------------------------------------------------
+  // 3. ALL REF HOOKS
+  // --------------------------------------------------------
+  const checkedTurns = useRef<Set<string>>(new Set());
+  const shownDestinations = useRef<Set<string>>(new Set());
+  const repinEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cameraZoomRef = useRef(1);
+  const zoomRafRef = useRef<number | null>(null);
+  const skipNextInitialPinPromptRef = useRef(false);
+  
+  const camState = useRef({ x: 0, y: 0, zoom: 1, bearing: 0 });
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const map3DRef = useRef<HTMLDivElement>(null);
+  const cameraLayerRef = useRef<HTMLDivElement>(null);
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pointerStart = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const isManualGesture = useRef(false);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const lastPinch = useRef<number | null>(null);
+
+  // --------------------------------------------------------
+  // 4. SYNC & CAMERA CALLBACKS
+  // --------------------------------------------------------
+  const syncCameraZoom = useCallback((nextZoom: number, immediate = false) => {
+    if (!immediate && Math.abs(cameraZoomRef.current - nextZoom) < 0.05) {
+      return; 
+    }
+    cameraZoomRef.current = nextZoom;
+    if (immediate) {
+      if (zoomRafRef.current !== null) {
+        cancelAnimationFrame(zoomRafRef.current);
+        zoomRafRef.current = null;
+      }
+      setCameraZoom(nextZoom);
+      return;
+    }
+    if (zoomRafRef.current !== null) return;
+    zoomRafRef.current = requestAnimationFrame(() => {
+      zoomRafRef.current = null;
+      setCameraZoom(cameraZoomRef.current);
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (zoomRafRef.current !== null) cancelAnimationFrame(zoomRafRef.current);
+    };
+  }, []);
+
+  const throttledUpdateViewCenter = useMemo(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    return () => {
+      if (timeout) return;
+      timeout = setTimeout(() => {
+        timeout = null;
+        if (!viewportRef.current) return;
+        const vp = viewportRef.current;
+        const { x: camX, y: camY, zoom } = camState.current;
+        const cx = (vp.clientWidth / 2 - camX) / zoom;
+        const cy = (vp.clientHeight / 2 - camY) / zoom;
+        setViewCenter({ x: cx, y: cy });
+      }, 80);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (skipNextInitialPinPromptRef.current) {
+      skipNextInitialPinPromptRef.current = false;
+      setShowInitialPinPrompt(false);
+    } else {
+      setShowInitialPinPrompt(true);
+    }
+    setOverrideOriginId(null);
+    setTempOriginNode(null);
+  }, [rawOrigin, rawDest, originFloorParam, destFloorParam]);
+
+  // --------------------------------------------------------
+  // 5. DERIVED DATA & LOGIC
+  // --------------------------------------------------------
+  const isCrossFloor = originFloorParam !== destFloorParam;
   const typedTestData = floors[currentFloorId] || floors["test"];
 
   const destinations = useMemo(
@@ -87,12 +190,7 @@ const MapView = () => {
   
   const originId = destinations[activeOriginRef || ""] || activeOriginRef;
   const destId = destinations[activeDestRef || ""] || activeDestRef;
-
-  // overrideOriginId: set when user re-pins during navigation — re-routes from new position
-  const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
   const effectiveOriginId = overrideOriginId ?? originId;
-  const [tempOriginNode, setTempOriginNode] = useState<{ id: string; x: number; y: number; anchorId: string } | null>(null);
-  const [showInitialPinPrompt, setShowInitialPinPrompt] = useState(true);
   
   const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, [typedTestData]);
   const effectiveNodeMap = useMemo(() => {
@@ -102,14 +200,13 @@ const MapView = () => {
       [tempOriginNode.id]: { x: tempOriginNode.x, y: tempOriginNode.y, type: "temp" },
     } as Record<string, NodeType>;
   }, [nodeMap, tempOriginNode]);
+
   const effectiveEdges = useMemo(() => {
     const base = typedTestData.edges as EdgeType[];
     if (!tempOriginNode) return base;
     return [...base, { from: tempOriginNode.id, to: tempOriginNode.anchorId }];
   }, [typedTestData.edges, tempOriginNode]);
 
-  // Dynamically calculate the map boundaries based on the current floor's extreme node coordinates
-  // This prevents the map from having infinite empty scrolling space if the floor is smaller
   const mapBounds = useMemo(() => {
     let maxX = 0;
     let maxY = 0;
@@ -117,7 +214,6 @@ const MapView = () => {
       if (typeof n.x === 'number' && n.x > maxX) maxX = n.x;
       if (typeof n.y === 'number' && n.y > maxY) maxY = n.y;
     });
-    // Add 200px padding so boundary edges don't cut off immediate visuals
     return { w: Math.max(maxX + 200, 800), h: Math.max(maxY + 200, 800) };
   }, [nodeMap]);
 
@@ -153,7 +249,6 @@ const MapView = () => {
       const candidates = getConnectorCandidates(floorId, mode);
       if (!candidates.length) return null;
 
-      // Lift mode must always prefer central lift when available.
       const effectiveCandidates = mode === "lift"
         ? (() => {
             const central = candidates.filter((c) => c.name.toLowerCase().includes("central"));
@@ -191,7 +286,6 @@ const MapView = () => {
       if (!candidates.length) return null;
 
       if (mode === "lift") {
-        // Always lock to central lift across floors.
         const central = candidates.filter((c) => c.name.toLowerCase().includes("central"));
         if (central.length) {
           if (!fallbackFromNodeId) return central[0];
@@ -231,7 +325,6 @@ const MapView = () => {
       const exactVariantMatch = candidates.find((c) => normalizeConnectorVariant(c.name, mode) === sourceVariant);
       if (exactVariantMatch) return exactVariantMatch;
 
-      // Graceful fallback for slight naming differences across floors.
       const looseMatch = candidates.find((c) => {
         const v = normalizeConnectorVariant(c.name, mode);
         return !!sourceVariant && !!v && (v.includes(sourceVariant) || sourceVariant.includes(v));
@@ -295,82 +388,12 @@ const MapView = () => {
 
   const routePoints = routePathInfo.points;
 
-  const [actualPath, setActualPath] = useState<{ x: number; y: number }[]>([]);
-  const [isDeviated, setIsDeviated] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [showTurnPopup, setShowTurnPopup] = useState(false);
-  const [pendingTurnNode, setPendingTurnNode] = useState<{ id: string; x: number; y: number } | null>(null);
-  const checkedTurns = useRef<Set<string>>(new Set());
-  const [locationToConfirm, setLocationToConfirm] = useState<{ name: string; pic: string } | null>(null);
-  const shownDestinations = useRef<Set<string>>(new Set());
-  const [selectedDestination, setSelectedDestination] = useState<{ name: string; pic: string } | null>(null);
-  const [isRecalibrating, setIsRecalibrating] = useState(false);
-  const [isRepinning, setIsRepinning] = useState(false);
-  const [cameraZoom, setCameraZoom] = useState(1);
-  const cameraZoomRef = useRef(1);
-  const zoomRafRef = useRef<number | null>(null);
-  const [repinModeSource, setRepinModeSource] = useState<"initial" | "lost">("lost");
-  const [repinTarget, setRepinTarget] = useState<{ x: number; y: number } | null>(null);
-  const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
-  const skipNextInitialPinPromptRef = useRef(false);
-
-  // Moved up camera refs & states since they're used in effectiveViewCenter early on
-  const camState = useRef({ x: 0, y: 0, zoom: 1, bearing: 0 });
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const map3DRef = useRef<HTMLDivElement>(null);
-  const cameraLayerRef = useRef<HTMLDivElement>(null);
-  const [autoFollow, setAutoFollow] = useState(true);
-  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pointerStart = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const isManualGesture = useRef(false);
-  const lastPointer = useRef<{ x: number; y: number } | null>(null);
-  const lastPinch = useRef<number | null>(null);
-
-  const syncCameraZoom = useCallback((nextZoom: number, immediate = false) => {
-    // Prevent excessive React re-renders by enforcing a minimum diff or `immediate`
-    if (!immediate && Math.abs(cameraZoomRef.current - nextZoom) < 0.05) {
-      return; 
-    }
-    cameraZoomRef.current = nextZoom;
-    if (immediate) {
-      if (zoomRafRef.current !== null) {
-        cancelAnimationFrame(zoomRafRef.current);
-        zoomRafRef.current = null;
-      }
-      setCameraZoom(nextZoom);
-      return;
-    }
-    if (zoomRafRef.current !== null) return;
-    zoomRafRef.current = requestAnimationFrame(() => {
-      zoomRafRef.current = null;
-      setCameraZoom(cameraZoomRef.current);
-    });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (zoomRafRef.current !== null) cancelAnimationFrame(zoomRafRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (skipNextInitialPinPromptRef.current) {
-      skipNextInitialPinPromptRef.current = false;
-      setShowInitialPinPrompt(false);
-    } else {
-      setShowInitialPinPrompt(true);
-    }
-    // Reset only when a fresh route request comes in via URL params.
-    // Avoid resetting on internal state transitions (e.g., connector target selection),
-    // which can otherwise reopen the pin/connector flow repeatedly.
-    setOverrideOriginId(null);
-    setTempOriginNode(null);
-  }, [rawOrigin, rawDest, originFloorParam, destFloorParam]);
-
   useEffect(() => { setActualPath([]); setIsDeviated(false); }, [routePath]);
   useEffect(() => { setStepIndex(0); }, [routePath]);
 
+  // --------------------------------------------------------
+  // 6. CUSTOM NAVIGATION HOOKS
+  // --------------------------------------------------------
   const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(
     startNode.x,
     startNode.y,
@@ -381,39 +404,39 @@ const MapView = () => {
     effectiveNodeMap,
   );
 
-  const snapResult = useMemo(() => applyCRFConstraints(rawPos.x, rawPos.y, effectiveNodeMap, effectiveEdges, routePath), [rawPos, effectiveNodeMap, effectiveEdges, routePath]);
-  const snappedPos = { x: snapResult.x, y: snapResult.y };
+  // ✅ Swapped to useCRFNavigation for global free-roaming
+  const {
+    correctedPos,
+    segmentIndex,
+  } = useCRFNavigation({
+    isNavActive,
+    routePath,
+    nodeMap: effectiveNodeMap,
+    edges: effectiveEdges, // Pass ALL edges to map the global tunnel physics
+    rawPos,
+    forceSetPos
+  });
 
+  const snappedPos = isNavActive ? correctedPos : rawPos;
+  const snappedNodeId = routePath[segmentIndex]; // Needed for deviation check below
+
+  // --------------------------------------------------------
+  // 7. NAVIGATION STATE & PROGRESS LOGIC
+  // --------------------------------------------------------
+  
+  // Snap raw pos to origin node ONLY ONCE on load, so buttons aren't overridden
   useEffect(() => {
-    if (isNavActive) return;
     const originNode = effectiveNodeMap[effectiveOriginId || ""];
-    if (originNode) forceSetPos(originNode.x, originNode.y);
-  }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap, forceSetPos]);
-
-  const [viewCenter, setViewCenter] = useState<{x: number, y: number} | null>(null);
-
-  const throttledUpdateViewCenter = useMemo(() => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    return () => {
-      if (timeout) return;
-      timeout = setTimeout(() => {
-        timeout = null;
-        if (!viewportRef.current) return;
-        const vp = viewportRef.current;
-        const { x: camX, y: camY, zoom } = camState.current;
-        const cx = (vp.clientWidth / 2 - camX) / zoom;
-        const cy = (vp.clientHeight / 2 - camY) / zoom;
-        setViewCenter({ x: cx, y: cy });
-      }, 80);
-    };
-  }, []);
+    if (originNode && !isNavActive && stepIndex === 0) {
+      forceSetPos(originNode.x, originNode.y);
+    }
+  }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap]);
 
   const effectiveViewCenter = useMemo(() => {
     if (autoFollow || !viewCenter) return snappedPos;
     return viewCenter;
   }, [autoFollow, viewCenter, snappedPos]);
 
-  // Invisible moving focus-box around user pointer: only labels inside this box are shown.
   const dynamicVisibleLabelCap = useMemo(() => {
     if (cameraZoom < 0.55) return 2;
     if (cameraZoom < 0.8) return 3;
@@ -423,8 +446,6 @@ const MapView = () => {
 
   const focusedDestinationMarkers = useMemo(() => {
     if (!destinationMarkers.length) return [];
-
-    // Keep focus-box screen size stable across zoom levels by converting to map-space.
     const normalizedZoom = Math.max(cameraZoom, 0.25);
     const halfW = (LABEL_FOCUS_BOX_WIDTH / normalizedZoom) / 2;
     const halfH = (LABEL_FOCUS_BOX_HEIGHT / normalizedZoom) / 2;
@@ -438,7 +459,6 @@ const MapView = () => {
 
     if (inBox.length > 0) return inBox.slice(0, dynamicVisibleLabelCap);
 
-    // Keep one nearby label when box is empty so context is not lost.
     const nearest = destinationMarkers.reduce((best, curr) => {
       const bestDist = Math.hypot(best.x - effectiveViewCenter.x, best.y - effectiveViewCenter.y);
       const currDist = Math.hypot(curr.x - effectiveViewCenter.x, curr.y - effectiveViewCenter.y);
@@ -448,150 +468,44 @@ const MapView = () => {
     return nearest ? [nearest] : [];
   }, [destinationMarkers, effectiveViewCenter, cameraZoom, dynamicVisibleLabelCap]);
 
-  const labelLayouts = useMemo(() => {
-    if (!focusedDestinationMarkers.length) return [] as Array<{
-      key: string;
-      dest: { name: string; x: number; y: number; id: string; pic: string };
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-      fontSize: number;
-      paddingX: number;
-      paddingY: number;
-    }>;
-
-    const placed: Array<{ left: number; top: number; right: number; bottom: number }> = [];
-    const layouts: Array<{
-      key: string;
-      dest: { name: string; x: number; y: number; id: string; pic: string };
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-      fontSize: number;
-      paddingX: number;
-      paddingY: number;
-    }> = [];
-
-    const normalizedZoom = Math.max(cameraZoom, 0.35);
-    const crowdRatio = Math.min(1, focusedDestinationMarkers.length / MAX_VISIBLE_LABELS);
-    const baseSize = 7.5 - crowdRatio * 1.4;
-    const zoomScale = Math.max(0.78, Math.min(1.18, normalizedZoom));
-    const sharedSize = Math.max(7, Math.min(10, Math.round(baseSize * zoomScale)));
-    const minGap = MIN_LABEL_SPACING;
-
-    const intersects = (box: { left: number; top: number; right: number; bottom: number }) => {
-      return placed.some((p) => (
-        !(box.right + minGap <= p.left || box.left >= p.right + minGap || box.bottom + minGap <= p.top || box.top >= p.bottom + minGap)
-      ));
-    };
-
-    focusedDestinationMarkers.forEach((dest, idx) => {
-      const lengthPenalty = dest.name.length > 18 ? 1 : 0;
-      const extraPenalty = dest.name.length > 28 ? 1 : 0;
-      const fontSize = Math.max(6, sharedSize - lengthPenalty - extraPenalty);
-      const paddingX = Math.max(4, Math.round(fontSize * 0.55));
-      const paddingY = Math.max(2, Math.round(fontSize * 0.25));
-      const textWidth = Math.min(140, Math.max(44, Math.round((dest.name.length + 2) * fontSize * 0.52)));
-      const width = textWidth + paddingX * 2;
-      const height = fontSize + paddingY * 2 + 2;
-
-      const baseYOffset = 14;
-      const candidates = [
-        { dx: 0, dy: -baseYOffset },
-        { dx: 0, dy: -(baseYOffset + height + minGap) },
-        { dx: -Math.round(width * 0.55), dy: -baseYOffset },
-        { dx: Math.round(width * 0.55), dy: -baseYOffset },
-        { dx: 0, dy: -(baseYOffset + 2 * (height + minGap)) },
-      ];
-
-      let placedBox: { left: number; top: number; right: number; bottom: number } | null = null;
-      for (const c of candidates) {
-        const left = dest.x + c.dx - width / 2;
-        const top = dest.y + c.dy - height;
-        const box = { left, top, right: left + width, bottom: top + height };
-        if (!intersects(box)) {
-          placedBox = box;
-          break;
-        }
-      }
-
-      // Fallback keeps moving label upward until there is no collision.
-      if (!placedBox) {
-        let top = dest.y - baseYOffset - height;
-        const left = dest.x - width / 2;
-        let guard = 0;
-        while (guard < 60) {
-          const box = { left, top, right: left + width, bottom: top + height };
-          if (!intersects(box)) {
-            placedBox = box;
-            break;
-          }
-          top -= (height + minGap);
-          guard++;
-        }
-      }
-
-      // Hard guarantee: never render overlapping labels.
-      if (!placedBox) {
-        return;
-      }
-
-      placed.push(placedBox);
-      layouts.push({
-        key: `${dest.id}-${idx}`,
-        dest,
-        left: placedBox.left,
-        top: placedBox.top,
-        width,
-        height,
-        fontSize,
-        paddingX,
-        paddingY,
-      });
-    });
-
-    return layouts;
-  }, [focusedDestinationMarkers, cameraZoom]);
-  // Keep live-tracking position constrained on graph edges so user movement follows JSON network.
-  useEffect(() => {
-    if (!isNavActive) return;
-    const d = Math.hypot(rawPos.x - snappedPos.x, rawPos.y - snappedPos.y);
-    if (d > 6) {
-      forceSetPos(snappedPos.x, snappedPos.y);
-    }
-  }, [isNavActive, rawPos.x, rawPos.y, snappedPos.x, snappedPos.y, forceSetPos]);
-
   const nearestRouteIndex = useMemo(() => {
-    if (!routePathInfo.points.length) return 0;
+    if (!routePath.length) return 0;
     let bestIdx = 0;
     let minDist = Infinity;
 
-    // Use the valid points array directly to save map lookups
-    routePathInfo.points.forEach((node, idx) => {
+    routePath.forEach((id, idx) => {
+      const node = effectiveNodeMap[id];
+      if (!node) return;
       const dist = Math.hypot(snappedPos.x - node.x, snappedPos.y - node.y);
       if (dist < minDist) {
         minDist = dist;
         bestIdx = idx;
       }
     });
-
     return bestIdx;
-  }, [routePathInfo, snappedPos]);
+  }, [routePath, effectiveNodeMap, snappedPos]);
 
   const navState = useMemo(() => {
     if (!routePathInfo.points.length) return { turnType: "straight", distToTurn: 0, totalRem: 0 };
     
     let turnType = "straight";
     let distToTurn = 0;
-    const currentIdx = nearestRouteIndex;
-    const points = routePathInfo.points;
+    // ✅ Replaced currentNodeIndex with segmentIndex
+    let currentIdx = isNavActive ? segmentIndex : nearestRouteIndex;
+    let minD = Infinity;
+    
+    routePath.forEach((id, idx) => {
+      const n = effectiveNodeMap[id];
+      if (!n) return;
+      const d = Math.hypot(snappedPos.x - n.x, snappedPos.y - n.y);
+      if (d < minD) { minD = d; currentIdx = idx; }
+    });
 
-    for (let i = currentIdx; i < points.length - 1; i++) {
-      const curr = points[i];
-      const next = points[i + 1];
-      const after = points[i + 2] || null;
+    for (let i = currentIdx; i < routePath.length - 1; i++) {
+      const curr = effectiveNodeMap[routePath[i]];
+      const next = effectiveNodeMap[routePath[i + 1]];
+      const after = routePath[i + 2] ? effectiveNodeMap[routePath[i + 2]] : null;
+      if (!curr || !next) continue;
       distToTurn += Math.hypot(curr.x - next.x, curr.y - next.y);
       if (after) {
         const a1 = Math.atan2(next.y - curr.y, next.x - curr.x);
@@ -602,19 +516,18 @@ const MapView = () => {
         if (Math.abs(diff) > 0.5) { turnType = diff > 0 ? "right" : "left"; break; }
       }
     }
-
-    if (currentIdx >= points.length - 1) turnType = "finish";
     
-    // O(1) remaining distance lookup
-    const totalRem = routePathInfo.totalDist - (routePathInfo.cumulativeDist[currentIdx] || 0);
+    if (currentIdx >= routePath.length - 1) turnType = "finish";
+    
+    let totalRem = 0;
+    for (let i = currentIdx; i < routePath.length - 1; i++) {
+      const n1 = effectiveNodeMap[routePath[i]];
+      const n2 = effectiveNodeMap[routePath[i + 1]];
+      if (n1 && n2) totalRem += Math.hypot(n1.x - n2.x, n1.y - n2.y);
+    }
     const PX_PER_M = 12.2;
-    
-    return { 
-      turnType, 
-      distToTurn: Math.max(0, distToTurn / PX_PER_M), 
-      totalRem: Math.max(0, totalRem / PX_PER_M) 
-    };
-  }, [routePathInfo, nearestRouteIndex]);
+    return { turnType, distToTurn: Math.max(0, distToTurn / PX_PER_M), totalRem: Math.max(0, totalRem / PX_PER_M) };
+  }, [snappedPos, routePath, effectiveNodeMap, segmentIndex, nearestRouteIndex, routePathInfo, isNavActive]);
 
   const progress = useMemo(() => {
     if (!routePathInfo.points.length || !snappedPos) return 0;
@@ -630,6 +543,9 @@ const MapView = () => {
     setStepIndex((prev) => (prev === nearestRouteIndex ? prev : nearestRouteIndex));
   }, [isNavActive, nearestRouteIndex]);
 
+  // --------------------------------------------------------
+  // 8. INTERACTIVE FUNCTIONS & EVENT HANDLERS
+  // --------------------------------------------------------
   const handleQrRecalibrate = (result: string) => {
     const targetNodeId = destinations[result] || result;
     const targetNode = nodeMap[targetNodeId];
@@ -639,12 +555,10 @@ const MapView = () => {
     }
   };
 
-  // --- Re-pin: find nearest node to the current viewport center (SVG coords) ---
   const evaluateRepinPos = useCallback(() => {
     if (!viewportRef.current) return;
     const vp = viewportRef.current;
     const { x: camX, y: camY, zoom } = camState.current;
-    // Viewport center in SVG space
     const svgCx = (vp.clientWidth  / 2 - camX) / zoom;
     const svgCy = (vp.clientHeight / 2 - camY) / zoom;
 
@@ -662,14 +576,12 @@ const MapView = () => {
         dist: Math.hypot(entries[0][1].x - svgCx, entries[0][1].y - svgCy) }
     );
 
-    // Find human name for this node
     const destName = Object.entries(typedTestData.destinations)
       .find(([, v]) => v.node === best.id)?.[0] || best.id;
 
     setRepinNearest({ ...best, name: destName });
   }, [nodeMap, typedTestData.destinations]);
 
-  const repinEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedRepinEval = useCallback(() => {
     if (repinEvalTimer.current) clearTimeout(repinEvalTimer.current);
     repinEvalTimer.current = setTimeout(evaluateRepinPos, 80);
@@ -680,9 +592,7 @@ const MapView = () => {
     const tempId = `temp_origin_${Date.now()}`;
     setTempOriginNode({ id: tempId, x: repinTarget.x, y: repinTarget.y, anchorId: repinNearest.id });
     setOverrideOriginId(tempId);
-    // Move the PDR tracker to the new physical position
     forceSetPos(repinTarget.x, repinTarget.y);
-    // Clear navigation history so route re-renders cleanly
     setActualPath([]);
     checkedTurns.current.clear();
     setIsRepinning(false);
@@ -707,10 +617,8 @@ const MapView = () => {
     setIsRepinning(true);
     setAutoFollow(false);
     gsap.killTweensOf(cameraLayerRef.current);
-    // Capture live positions
     camState.current.x = gsap.getProperty(cameraLayerRef.current, 'x') as number;
     camState.current.y = gsap.getProperty(cameraLayerRef.current, 'y') as number;
-    // Evaluate immediately
     setTimeout(evaluateRepinPos, 100);
   };
 
@@ -720,15 +628,22 @@ const MapView = () => {
     const next = Math.min(baseIndex + 1, routePath.length - 1);
     setStepIndex(next);
     const n = effectiveNodeMap[routePath[next]];
-    if (n) forceSetPos(n.x, n.y);
+    if (n) {
+      forceSetPos(n.x, n.y);
+      setAutoFollow(true); 
+    }
   };
+  
   const handlePrevStep = () => {
     if (!routePath.length) return;
     const baseIndex = isNavActive ? nearestRouteIndex : stepIndex;
     const prev = Math.max(baseIndex - 1, 0);
     setStepIndex(prev);
     const n = effectiveNodeMap[routePath[prev]];
-    if (n) forceSetPos(n.x, n.y);
+    if (n) {
+      forceSetPos(n.x, n.y);
+      setAutoFollow(true); 
+    }
   };
 
   const turnNodes = useMemo(() => {
@@ -748,7 +663,11 @@ const MapView = () => {
     return turns;
   }, [routePath, effectiveNodeMap]);
 
-  useEffect(() => { if (isNavActive) setIsDeviated(!snapResult.isOnRoute); }, [snapResult, isNavActive]);
+  useEffect(() => { 
+    if (isNavActive && snappedNodeId) {
+      setIsDeviated(!routePath.includes(snappedNodeId));
+    }
+  }, [snappedNodeId, isNavActive, routePath]);
 
   useEffect(() => {
     if (!isNavActive || isPaused) return;
@@ -822,6 +741,7 @@ const MapView = () => {
       selectedConnectorName,
       finalDestNode || null,
     );
+    
     if (!destConnector) {
       setCrossFloorPhase("to-final");
       skipNextInitialPinPromptRef.current = true;
@@ -859,8 +779,6 @@ const MapView = () => {
     }
   }, [isNavActive, crossFloorPhase, connectorTarget, snappedPos]);
 
-
-
   const startNavigation = async () => {
     if (crossFloorPhase === "mode-selection" || crossFloorPhase === "await-transfer") return;
     if (!routePath.length) return;
@@ -884,6 +802,9 @@ const MapView = () => {
     camState.current.y = gsap.getProperty(cameraLayerRef.current, "y") as number;
   };
 
+  // --------------------------------------------------------
+  // 9. CAMERA & GESTURE CONTROL EFFECTS
+  // --------------------------------------------------------
   useEffect(() => {
     if (!viewportRef.current || !cameraLayerRef.current || !map3DRef.current) return;
     gsap.to(map3DRef.current, { rotateX: FIXED_PITCH, rotateY: 0, rotateZ: 0, duration: 1.0, ease: "power2.out" });
@@ -901,14 +822,12 @@ const MapView = () => {
         if (p.y > maxY) maxY = p.y;
       });
 
-      // Generous padding so the entire route fits with breathing room
       const padding = Math.max(vpW, vpH) * 0.18;
       minX -= padding; maxX += padding;
       minY -= padding; maxY += padding;
       const routeW = maxX - minX;
       const routeH = maxY - minY;
 
-      // Fit-to-viewport zoom WITHOUT any multiplier, then cap
       const zoomFit = Math.min(vpW / Math.max(routeW, 1), vpH / Math.max(routeH, 1));
       const zoom = Math.min(zoomFit * INITIAL_ZOOM_BOOST, MAX_INITIAL_ZOOM);
 
@@ -917,7 +836,6 @@ const MapView = () => {
       const camX = vpW / 2 - centerX * zoom;
       const camY = vpH / 2 - centerY * zoom;
 
-      // Pre-position camera (no animation) then animate scale in for smooth entry
       gsap.set(cameraLayerRef.current, { x: camX, y: camY, scale: zoom * 0.85 });
       gsap.to(cameraLayerRef.current, {
         scale: zoom, duration: 0.9, ease: "power3.out", delay: 0.1,
@@ -926,7 +844,6 @@ const MapView = () => {
       camState.current = { x: camX, y: camY, zoom, bearing: 0 };
       syncCameraZoom(zoom, true);
     } else {
-      // No route: fit entire map to screen at a comfortable level
       const { w: MAP_W, h: MAP_H } = mapBounds;
       const zFit = Math.min(vpW / MAP_W, vpH / MAP_H);
       const z = Math.min(zFit * (INITIAL_ZOOM_BOOST + 0.03), MAX_INITIAL_ZOOM);
@@ -966,7 +883,6 @@ const MapView = () => {
     const maxZoom = 8;
     while ((MAP_W * z < vpW || MAP_H * z < vpH) && z < maxZoom) z = Math.min(maxZoom, z * 1.1);
     
-    // In repin mode keep much looser bounds so users can place pin across the full floor
     const paddingLimit = relaxed ? Math.max(vpW * 2.2, 2200) : Math.max(vpW * 0.4, 600);
     const minX = vpW - MAP_W * z - paddingLimit;
     const maxX = paddingLimit;
@@ -994,7 +910,6 @@ const MapView = () => {
   };
 
   useEffect(() => {
-    // Only execute clamping buffer if the user manually panned (autoFollow is false)
     if (isRepinning || autoFollow || !viewportRef.current || !cameraLayerRef.current || pointers.current.size > 0) return;
     const vp = viewportRef.current;
     const { zoom, x: curX, y: curY } = camState.current;
@@ -1027,7 +942,6 @@ const MapView = () => {
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // Handle pinch to zoom on mobile properly anchored to fingers
     if (pointers.current.size === 2) {
       beginManualGestureControl();
       const pts = Array.from(pointers.current.values());
@@ -1036,29 +950,18 @@ const MapView = () => {
         const ratio = dist / lastPinch.current;
         let nz = camState.current.zoom * ratio;
         
-        // Prevent zooming too far in or out (clamping done in clampCamera, but calculate targetX first)
-        
-        // Find pinch center in screen coordinates
         const screenCx = (pts[0].x + pts[1].x) / 2;
         const screenCy = (pts[0].y + pts[1].y) / 2;
         
-        // Map screen center to SVG space
         const svgCx = (screenCx - camState.current.x) / camState.current.zoom;
         const svgCy = (screenCy - camState.current.y) / camState.current.zoom;
         
-        // New camera position so SVG point remains exactly under fingers
         const targetX = screenCx - (svgCx * nz);
         const targetY = screenCy - (svgCy * nz);
 
-        // the clampCamera will automatically fix nz if bounds exceed map limits, 
-        // so we must recalculate target X/Y if nz gets modified by clamp!
         const c = clampCamera(targetX, targetY, nz, undefined, 0.05, isRepinning);
-        
-        // Recalculate if zoom boundary hit:
         const finalX = screenCx - (svgCx * c.z);
         const finalY = screenCy - (svgCy * c.z);
-        
-        // Re-clamp the translations strictly using the final bounded zoom!
         const finalC = clampCamera(finalX, finalY, c.z, undefined, 0.05, isRepinning);
 
         gsap.set(cameraLayerRef.current, { scale: finalC.z, x: finalC.x, y: finalC.y });
@@ -1088,14 +991,12 @@ const MapView = () => {
       const dy = e.clientY - lastPointer.current.y;
       const nx = camState.current.x + dx;
       const ny = camState.current.y + dy;
-      // Removed focus clamping on pure pan to allow free movement across the map space
       const c = clampCamera(nx, ny, camState.current.zoom, undefined, 0.05, isRepinning);
       gsap.set(cameraLayerRef.current, { x: c.x, y: c.y });
       camState.current.x = c.x;
       camState.current.y = c.y;
       lastPointer.current = { x: e.clientX, y: e.clientY };
-      throttledUpdateViewCenter();
-      if (isRepinning) debouncedRepinEval(); // live-evaluate while user pans in repin mode
+      if (isRepinning) debouncedRepinEval(); 
     }
   };
 
@@ -1127,10 +1028,10 @@ const MapView = () => {
       gsap.to(cameraLayerRef.current, { x: tx, y: ty, duration: 0.8, ease: "power3.out" });
     }
   };
+  
   const handleZoom = (dir: "in" | "out") => {
     setAutoFollow(false);
     const nz = dir === "in" ? camState.current.zoom * 1.35 : camState.current.zoom / 1.35;
-    // Allow zooming freely without snapping the center back to snappedPos
     const c = clampCamera(camState.current.x, camState.current.y, nz, undefined, 0.05, isRepinning);
     gsap.to(cameraLayerRef.current, { scale: c.z, x: c.x, y: c.y, duration: 0.4 });
     camState.current.zoom = c.z;
@@ -1315,7 +1216,6 @@ const MapView = () => {
 
       {isCrossFloor && crossFloorPhase === "await-transfer" && (
         <>
-          {/* Small confirm card (kept for accessibility) */}
           <div
             style={{
               position: "absolute",
@@ -1356,7 +1256,6 @@ const MapView = () => {
             </button>
           </div>
 
-          {/* Large centered overlay (Google Maps style) */}
           <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 780 }}>
             <div style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
               <div style={{ background: "rgba(255,255,255,0.98)", padding: "22px 28px", borderRadius: 18, boxShadow: "0 20px 40px rgba(2,6,23,0.2)", display: "flex", flexDirection: "column", alignItems: "center", minWidth: 220 }}>
@@ -1379,63 +1278,92 @@ const MapView = () => {
         </div>
       )}
 
-      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div ref={viewportRef} style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden", touchAction: "none" }}
-          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
-          <div ref={map3DRef} style={{ width: "100%", height: "100%" }}>
-            <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
-              <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
-              {tempOriginNode && (
+      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 1, touchAction: "none", userSelect: "none" }}>
+        <div style={{ width: "100%", maxWidth: "100%", height: "75vh", overflow: "hidden", pointerEvents: "auto", position: "relative", boxSizing: "border-box", touchAction: "none", userSelect: "none", padding: 10 }}>
+            <div
+            ref={viewportRef}
+            style={{ position: "absolute", inset: 0, overflow: "hidden", background: "transparent", touchAction: "none" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onTouchStart={(e) => { e.preventDefault(); }}
+          >
+            <div ref={map3DRef} style={{ width: "100%", height: "100%", transformStyle: "preserve-3d" as const, willChange: "transform" }}>
+              <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
+
+                <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
+
+                {tempOriginNode && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: tempOriginNode.x,
+                      top: tempOriginNode.y,
+                      transform: "translate(-50%, -50%)",
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      background: "#2563eb",
+                      border: "2px solid white",
+                      boxShadow: "0 0 0 6px rgba(37,99,235,0.2)",
+                      zIndex: 28,
+                    }}
+                  />
+                )}
+
+                {focusedDestinationMarkers.map((dest) => {
+              const dist = Math.hypot(snappedPos.x - dest.x, snappedPos.y - dest.y);
+              const near = dist < 250;
+              const currentZoom = camState.current?.zoom ?? 1;
+              const labelScale = Math.max(0.45, Math.min(0.9, 0.7 * currentZoom));
+              const baseScale = 0.7 * labelScale * (near ? 1.15 : 1);
+              return (
                 <div
+                  key={dest.name}
+                  onClick={() => dest.pic && setSelectedDestination({ name: dest.name, pic: dest.pic })}
                   style={{
-                    position: "absolute",
-                    left: tempOriginNode.x,
-                    top: tempOriginNode.y,
-                    transform: "translate(-50%, -50%)",
-                    width: 14,
-                    height: 14,
-                    borderRadius: "50%",
-                    background: "#2563eb",
-                    border: "2px solid white",
-                    boxShadow: "0 0 0 6px rgba(37,99,235,0.2)",
-                    zIndex: 28,
-                  }}
-                />
-              )}
-              {labelLayouts.map((layout, idx) => (
-                <div
-                  key={layout.key}
-                  onClick={() => layout.dest.pic && setSelectedDestination({ name: layout.dest.name, pic: layout.dest.pic })}
-                  style={{
-                    position: "absolute",
-                    left: layout.left,
-                    top: layout.top,
-                    background: "white",
-                    padding: `${layout.paddingY}px ${layout.paddingX}px`,
-                    borderRadius: 6,
-                    fontSize: layout.fontSize,
-                    fontWeight: 600,
-                    border: "1px solid #dbe7f5",
-                    boxShadow: "0 6px 14px rgba(15,23,42,0.12)",
-                    whiteSpace: "nowrap",
-                    width: layout.width,
-                    maxWidth: layout.width,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    transition: "opacity 0.16s ease, transform 0.16s ease",
-                    cursor: "pointer",
-                    zIndex: 29 + idx,
-                    userSelect: "none",
+                    position: "absolute", left: dest.x, top: dest.y,
+                      transform: `translate(-50%, -100%) scale(${baseScale})`,
+                      marginTop: -Math.round(8 * labelScale),
+                      background: "#FFFFFF",
+                      color: "#374151",
+                      padding: `${Math.round(3 * labelScale)}px ${Math.round(6 * labelScale)}px`, borderRadius: Math.round(8 * labelScale),
+                      border: "1px solid #E5E7EB",
+                      boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
+                      fontSize: Math.max(9, Math.round(8 * labelScale)), fontWeight: 600,
+                    pointerEvents: "auto", cursor: dest.pic ? "pointer" : "default",
+                    zIndex: 20, whiteSpace: "nowrap",
+                    transition: "all 0.3s cubic-bezier(.4,0,.2,1)",
+                      
+                    display: "flex", alignItems: "center", gap: 4,
                   }}
                 >
-                  📍 {layout.dest.name}
+                  {"\uD83D\uDCCD"} {dest.name}
                 </div>
-              ))}
-              <div style={{ position: "absolute", left: snappedPos.x, top: snappedPos.y, transform: `translate(-50%, -50%) rotate(${heading}deg)`, transition: "transform 120ms linear", willChange: "transform", zIndex: 30 }}>
-                <svg width="48" height="48" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="15" fill="#4285F4" stroke="white" strokeWidth="3" />
-                  <path d="M50 20 L65 45 L35 45 Z" fill="#4285F4" />
-                </svg>
+              );
+            })}
+
+            <div style={{
+              position: "absolute", left: snappedPos.x, top: snappedPos.y,
+              transform: `translate(-50%, -50%) rotate(${heading}deg)`,
+              transition: "transform 120ms linear",
+              zIndex: 30, pointerEvents: "none",
+              willChange: "transform",
+              filter: "drop-shadow(0 2px 6px rgba(66,133,244,0.4))",
+            }}>
+              <svg width="48" height="48" viewBox="0 0 100 100" fill="none">
+                <defs>
+                  <radialGradient id="gVision" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(50 50) rotate(-90) scale(50)">
+                    <stop offset="0%" stopColor="#4285F4" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="#4285F4" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="15" fill="#4285F4" stroke="white" strokeWidth="3" />
+                <path d="M50 20 L65 45 L35 45 Z" fill="#4285F4" />
+              </svg>
+            </div>
               </div>
             </div>
           </div>
@@ -1517,7 +1445,6 @@ const MapView = () => {
       {/* ── Re-pin overlay: fixed center crosshair on the live map ── */}
       {isRepinning && (
         <>
-          {/* Dimmed top hint bar */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, zIndex: 600,
             background: 'rgba(255,255,255,0.96)',
@@ -1541,7 +1468,6 @@ const MapView = () => {
             </div>
           </div>
 
-          {/* Fixed center pin — always at screen center, on top of the live map */}
           <div style={{
             position: 'absolute', left: '50%', top: '50%',
             transform: 'translate(-50%, -100%)',
@@ -1557,7 +1483,6 @@ const MapView = () => {
             </svg>
           </div>
 
-          {/* Pulse ring at center */}
           <div style={{
             position: 'absolute', left: '50%', top: '50%',
             transform: 'translate(-50%,-50%)',
@@ -1571,7 +1496,6 @@ const MapView = () => {
             }} />
           </div>
 
-          {/* Bottom confirm sheet */}
           <div style={{
             position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 610,
             background: '#ffffff',
@@ -1580,7 +1504,6 @@ const MapView = () => {
             padding: '20px 20px 36px',
             boxShadow: '0 -4px 24px rgba(15,23,42,0.2)',
           }}>
-            {/* Nearest location status */}
             <div style={{
               background: '#eff6ff',
               border: '1px solid #dbeafe',

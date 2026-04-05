@@ -4,8 +4,8 @@ export type NodeType = { x: number; y: number; type: string };
 
 type Params = {
   isNavActive: boolean;
-  routePath: string[]; // ✅ ONLY shortest-path nodes
-  nodeMap: Record<string, NodeType>; // ✅ all nodes for coord lookup
+  routePath: string[]; 
+  nodeMap: Record<string, NodeType>; 
   rawPos: { x: number; y: number };
   forceSetPos: (x: number, y: number) => void;
   setIsFollowing: (v: boolean) => void;
@@ -20,36 +20,79 @@ export function useNodeLockedNavigation({
   rawPos,
   forceSetPos,
   setIsFollowing,
-  arriveThresholdPx = 35,
+  arriveThresholdPx = 3, 
   forwardThresholdT = 0.92,
 }: Params) {
   const [currentNodeIndex, setCurrentNodeIndex] = useState(0);
+  const [snappedNodeId, setSnappedNodeId] = useState<string | null>(null);
 
-  // ✅ Reset index when route changes (shortest path changes)
   useEffect(() => {
     setCurrentNodeIndex(0);
+    setSnappedNodeId(routePath[0] ?? null);
   }, [routePath.join("|")]);
 
-  // ✅ Safety reset when route empty
   useEffect(() => {
     if (routePath.length === 0) setCurrentNodeIndex(0);
   }, [routePath.length]);
 
-  // ✅ Use ONLY routePath nodes for nav
+  // ✅ FREE-ROAM: Find absolute closest node with 30px anti-zigzag buffer
+  useEffect(() => {
+    if (!isNavActive || !nodeMap || Object.keys(nodeMap).length === 0) return;
+
+    let minDist = Infinity;
+    let bestId: string | null = null;
+    
+    // Ensure rawPos is valid before math
+    if (isNaN(rawPos.x) || isNaN(rawPos.y)) return;
+
+    for (const id in nodeMap) {
+      const n = nodeMap[id];
+      const dist = Math.hypot(rawPos.x - n.x, rawPos.y - n.y);
+      if (dist < minDist) {
+        minDist = dist;
+        bestId = id;
+      }
+    }
+
+    setSnappedNodeId(current => {
+        if (!current) return bestId;
+        if (current === bestId) return current;
+        
+        const currentActiveNode = nodeMap[current];
+        if (currentActiveNode) {
+            const distToCurrent = Math.hypot(rawPos.x - currentActiveNode.x, rawPos.y - currentActiveNode.y);
+            // Require new node to be significantly closer to switch (Stops the zig-zag)
+            if (minDist < distToCurrent - 30) {
+                return bestId;
+            }
+            return current;
+        }
+        return bestId;
+    });
+  }, [rawPos.x, rawPos.y, nodeMap, isNavActive]);
+
   const currentNodeId = routePath[currentNodeIndex] ?? null;
-  const nextNodeId =
-    currentNodeIndex < routePath.length - 1
-      ? routePath[currentNodeIndex + 1]
-      : null;
+  const nextNodeId = currentNodeIndex < routePath.length - 1 ? routePath[currentNodeIndex + 1] : null;
 
-  // ✅ Node-locked position shown on map
+  // ✅ Node-locked position is safely drawn at the globally snapped node
   const nodeLockedPos = useMemo(() => {
-    if (!currentNodeId) return rawPos;
-    const n = nodeMap[currentNodeId];
+    if (!snappedNodeId) return rawPos;
+    const n = nodeMap[snappedNodeId];
     return n ? { x: n.x, y: n.y } : rawPos;
-  }, [currentNodeId, nodeMap, rawPos]);
+  }, [snappedNodeId, nodeMap, rawPos]);
 
-  // ✅ Route direction angle (current -> next)
+  // ✅ INFINITE LOOP TETHER DELETED HERE. The engine is now completely free to roam.
+
+  // If user freely roams back onto a later segment of the route, update instructions
+  useEffect(() => {
+    if (!isNavActive || !snappedNodeId) return;
+    const idxOnRoute = routePath.indexOf(snappedNodeId);
+    if (idxOnRoute !== -1 && idxOnRoute >= currentNodeIndex) {
+      setCurrentNodeIndex(idxOnRoute);
+      setIsFollowing(true);
+    }
+  }, [snappedNodeId, isNavActive, routePath, currentNodeIndex, setIsFollowing]);
+
   const routeFacingAngle = useMemo(() => {
     if (!currentNodeId || !nextNodeId) return 0;
     const curr = nodeMap[currentNodeId];
@@ -58,7 +101,6 @@ export function useNodeLockedNavigation({
     return (Math.atan2(next.y - curr.y, next.x - curr.x) * 180) / Math.PI;
   }, [currentNodeId, nextNodeId, nodeMap]);
 
-  // ✅ Auto-advance to next node when rawPos reaches the next segment end
   useEffect(() => {
     if (!isNavActive) return;
     if (routePath.length < 2) return;
@@ -69,28 +111,21 @@ export function useNodeLockedNavigation({
     const next = nodeMap[nextNodeId];
     if (!curr || !next) return;
 
-    // Distance to next node
-    const distToNext = Math.hypot(rawPos.x - next.x, rawPos.y - next.y);
+    if (isNaN(rawPos.x) || isNaN(rawPos.y)) return;
 
-    // Projection progress t on segment curr->next
+    const distToNext = Math.hypot(rawPos.x - next.x, rawPos.y - next.y);
     const dx = next.x - curr.x;
     const dy = next.y - curr.y;
     const segLen2 = dx * dx + dy * dy;
     if (segLen2 === 0) return;
 
     const t = ((rawPos.x - curr.x) * dx + (rawPos.y - curr.y) * dy) / segLen2;
-
-    // ✅ Arrive condition: close enough OR forward enough
     const arrived = distToNext < arriveThresholdPx || t >= forwardThresholdT;
 
     if (arrived) {
       const newIndex = currentNodeIndex + 1;
       setCurrentNodeIndex(newIndex);
-
-      // Snap exactly to next route node (node-only movement)
       forceSetPos(next.x, next.y);
-
-      // keep camera centered
       setIsFollowing(true);
     }
   }, [
@@ -108,7 +143,6 @@ export function useNodeLockedNavigation({
     setIsFollowing,
   ]);
 
-  // Manual helper (optional, can be used for debugging)
   const goNextNode = () => {
     if (currentNodeIndex >= routePath.length - 1) return;
     const nextIdx = currentNodeIndex + 1;
@@ -128,5 +162,6 @@ export function useNodeLockedNavigation({
     nodeLockedPos,
     routeFacingAngle,
     goNextNode,
+    snappedNodeId 
   };
 }

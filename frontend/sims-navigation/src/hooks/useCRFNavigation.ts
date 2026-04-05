@@ -1,165 +1,141 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 type XY = { x: number; y: number };
 type Node = { x: number; y: number; type: string };
+type Edge = { from: string; to: string };
 
 type Params = {
   isNavActive: boolean;
-  routePath: string[]; // List of node IDs
+  routePath: string[]; // List of node IDs for guidance
   nodeMap: Record<string, Node>;
-  rawPos: XY; // The drifting PDR position (from usePDR)
-  // heading removed as it was unused
-  forceSetPos: (x: number, y: number) => void; 
+  edges: Edge[]; // ALL map edges to allow global free-roaming
+  rawPos: XY; // The drifting PDR position
+  forceSetPos: (x: number, y: number) => void;
 };
 
 /**
- * CRF (Constrained Route Following) Navigation Hook
- * 
- * This hook acts as a "particle filter lite" or "map matcher".
- * It takes the noisy, drifting PDR position (rawPos) and purely calculates
- * the user's progress along the valid route path.
- * 
- * It projects user movement onto the current path segment.
+ * Free-Roam CRF Navigation Hook
+ * Scans the ENTIRE map's corridor network. Applies a strict 0.6m hardstop
+ * to prevent the user from drifting through physical walls, allowing true free-roam.
  */
 export function useCRFNavigation({
   isNavActive,
   routePath,
   nodeMap,
+  edges,
   rawPos,
-   forceSetPos
+  forceSetPos
 }: Params) {
-  // We track which segment of the route we are on
-  // index 0 means: segment from routePath[0] to routePath[1]
   const [segmentIndex, setSegmentIndex] = useState(0);
-  
-  // Progress along that segment (0.0 to 1.0)
-  // 0.0 = at start node, 1.0 = at end node
   const [segmentProgress, setSegmentProgress] = useState(0.0);
+  const [correctedPos, setCorrectedPos] = useState<XY>(rawPos);
   
-  // Turn Detection
   const [turnDetected, setTurnDetected] = useState<{
-      detected: boolean; 
-      nodeId: string | null;
+    detected: boolean; 
+    nodeId: string | null;
   }>({ detected: false, nodeId: null });
 
-  // We need to track the *previous* rawPos to calculate delta movement
-  const prevRawPos = useRef<XY>(rawPos);
+  // Physics Constants
+  const TUNNEL_RADIUS_M = 0.6; 
+  const PX_PER_M = 12.2;
+  const TUNNEL_RADIUS_PX = TUNNEL_RADIUS_M * PX_PER_M; // ~7.32 pixels
 
   // Reset when route changes
   useEffect(() => {
     setSegmentIndex(0);
     setSegmentProgress(0.0);
     setTurnDetected({ detected: false, nodeId: null });
-    prevRawPos.current = rawPos;
+    setCorrectedPos(rawPos);
   }, [routePath.length, isNavActive]);
 
-  // Derived: Current & Next Node
   const currentId = routePath[segmentIndex];
   const nextId = routePath[segmentIndex + 1];
   
   const currentNode = useMemo(() => nodeMap[currentId], [currentId, nodeMap]);
   const nextNode = useMemo(() => nodeMap[nextId], [nextId, nodeMap]);
 
-  // Derived: The actual coordinate to show on map (Snapping)
-  const correctedPos = useMemo(() => {
-    if (!currentNode) return rawPos; // Fallback
-    if (!nextNode) return { x: currentNode.x, y: currentNode.y }; // End of route
+  useEffect(() => {
+    if (!isNavActive) return;
 
-    // Interpolate
-    const dx = nextNode.x - currentNode.x;
-    const dy = nextNode.y - currentNode.y;
-    
-    return {
-      x: currentNode.x + dx * segmentProgress,
-      y: currentNode.y + dy * segmentProgress,
+    // 1. Math Helper: Project a point onto a line segment
+    const getClosestPointOnSegment = (p: XY, a: XY, b: XY) => {
+      const atob = { x: b.x - a.x, y: b.y - a.y };
+      const atop = { x: p.x - a.x, y: p.y - a.y };
+      const lenSq = atob.x * atob.x + atob.y * atob.y;
+      if (lenSq === 0) return { point: a, progress: 0 };
+      
+      const t = Math.max(0, Math.min(1, (atop.x * atob.x + atop.y * atob.y) / lenSq));
+      return { 
+        point: { x: a.x + atob.x * t, y: a.y + atob.y * t },
+        progress: t 
+      };
     };
-  }, [currentNode, nextNode, segmentProgress, rawPos]);
 
-  // Main Logic: Update progress based on PDR movement
-  useEffect(() => {
-    if (!isNavActive || !currentNode || !nextNode) {
-      prevRawPos.current = rawPos;
-      return;
+    // --- PART A: GLOBAL FREE-ROAM MAP CLAMPING ---
+    let minMapDist = Infinity;
+    let globalClosestPoint = { x: rawPos.x, y: rawPos.y };
+
+    // Scan every single hallway in the building
+    for (let i = 0; i < edges.length; i++) {
+      const a = nodeMap[edges[i].from];
+      const b = nodeMap[edges[i].to];
+      if (!a || !b) continue;
+
+      const { point } = getClosestPointOnSegment(rawPos, a, b);
+      const d = Math.hypot(rawPos.x - point.x, rawPos.y - point.y);
+      
+      if (d < minMapDist) {
+        minMapDist = d;
+        globalClosestPoint = point;
+      }
     }
 
-    // 1. Calculate how much the "raw" PDR dot moved
-    // We treat rawPos as a "local delta generator"
-    const dxRaw = rawPos.x - prevRawPos.current.x;
-    const dyRaw = rawPos.y - prevRawPos.current.y;
-    prevRawPos.current = rawPos; // Update for next frame
+    let newPos = { ...rawPos };
 
-    // If no movement, do nothing
-    if (Math.abs(dxRaw) < 0.1 && Math.abs(dyRaw) < 0.1) return;
-
-    // 2. Define the vector of the current corridor/segment
-    const segDx = nextNode.x - currentNode.x;
-    const segDy = nextNode.y - currentNode.y;
-    const segLen = Math.hypot(segDx, segDy);
-    
-    if (segLen === 0) return; 
-
-    // 3. Project movement
-    const dirX = segDx / segLen;
-    const dirY = segDy / segLen;
-
-    // Standard projection (movement parallel to path)
-    const moveProj = dxRaw * dirX + dyRaw * dirY;
-
-    // 4. Update progress
-    // moveProj is in pixels. Convert to ratio (0..1)
-    let progressChange = moveProj / segLen;
-
-    // CORNER FIX: If we are near the end (>70%) and the user moves ORTHOGONALLY 
-    // towards the *next* segment direction, we should count that as progress too?
-    // Actually, simpler: just allow entering the "proximity zone" of the next node.
-    setSegmentProgress(old => {
-      let newVal = old + progressChange;
-      if (newVal < 0) newVal = 0;
-      return newVal;
-    });
-
-  }, [rawPos, isNavActive, currentNode, nextNode]);
-
-  // Auto-advance Logic: Proximity based check
-  useEffect(() => {
-    if (!nextNode) {
-        if(segmentProgress >= 1) setSegmentProgress(1); // Cap at end
-        return;
+    // Apply the 0.6m Glass Wall Hardstop
+    // We add +0.1px to prevent microscopic infinite physics loops
+    if (minMapDist > TUNNEL_RADIUS_PX + 0.1) {
+      const dx = rawPos.x - globalClosestPoint.x;
+      const dy = rawPos.y - globalClosestPoint.y;
+      
+      // Pin the coordinate exactly to the edge of the 0.6m tunnel
+      newPos = {
+        x: globalClosestPoint.x + (dx / minMapDist) * TUNNEL_RADIUS_PX,
+        y: globalClosestPoint.y + (dy / minMapDist) * TUNNEL_RADIUS_PX
+      };
+      
+      // CRITICAL: Overwrite the sensor data so it doesn't walk through the wall
+      forceSetPos(newPos.x, newPos.y); 
     }
 
-    // Check Euclidean distance from our theoretical position to the next node
-    const pxTraveled = segmentProgress * Math.hypot(nextNode.x - currentNode.x, nextNode.y - currentNode.y);
-    const totalLen = Math.hypot(nextNode.x - currentNode.x, nextNode.y - currentNode.y);
-    const distRem = totalLen - pxTraveled;
+    setCorrectedPos(newPos);
 
-    // Threshold: 1.5m = ~75px
-    // Trigger if close, BUT do not auto advance. Ask for confirmation if it's a turn.
-    if ((distRem < 75 || segmentProgress >= 0.95) && !turnDetected.detected) {
-       if (segmentIndex < routePath.length - 2) {
-           setTurnDetected({ detected: true, nodeId: nextId });
-       } else {
-         // Reached very end
-         if (segmentProgress > 1) setSegmentProgress(1.0);
-       }
+    // --- PART B: ROUTE PROGRESSION ---
+    // Even if they are free-roaming, if they happen to be on the route, track their progress
+    if (currentNode && nextNode) {
+        const { progress } = getClosestPointOnSegment(newPos, currentNode, nextNode);
+        setSegmentProgress(progress);
+
+        const distToNextNode = Math.hypot(newPos.x - nextNode.x, newPos.y - nextNode.y);
+        if (distToNextNode < (1.5 * PX_PER_M) && !turnDetected.detected) {
+           if (segmentIndex < routePath.length - 2) {
+               setTurnDetected({ detected: true, nodeId: nextId });
+           }
+        }
     }
-  }, [segmentProgress, segmentIndex, routePath.length, nextId, nextNode, currentNode, turnDetected.detected]);
 
-  // Public function to confirm turn
+  }, [rawPos, isNavActive, edges, nodeMap, forceSetPos, currentNode, nextNode, segmentIndex, turnDetected.detected, nextId, routePath.length]);
+
   const confirmTurn = () => {
-    if (!turnDetected.detected) return;
+    if (!turnDetected.detected || !nextId) return;
     
-    // Move to next segment
-    const nextIdx = segmentIndex + 1;
-    
-    setSegmentIndex(nextIdx);
+    setSegmentIndex(segmentIndex + 1);
     setSegmentProgress(0.0);
     setTurnDetected({ detected: false, nodeId: null });
     
-    // Snap PDR drift
-    const realNext = nodeMap[routePath[nextIdx]];
+    const realNext = nodeMap[nextId];
     if (realNext) {
         forceSetPos(realNext.x, realNext.y);
-        prevRawPos.current = { x: realNext.x, y: realNext.y };
     }
   };
 
@@ -168,7 +144,7 @@ export function useCRFNavigation({
     currentNode,
     nextNode,
     segmentIndex,
-    segmentProgress, // 0..1
+    segmentProgress,
     turnDetected,
     confirmTurn
   };
