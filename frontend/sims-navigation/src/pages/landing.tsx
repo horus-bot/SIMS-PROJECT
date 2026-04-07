@@ -483,22 +483,25 @@ export default function Landing() {
             {/* Large QR Option (only at start) */}
             {activeStep === 'origin' && !searchQuery && !activeCategory && (
               <div className="qr-full-prompt-v4">
-                <div className="divider-v4"><span>OR</span></div>
+                <div className="divider-v4"><div style={{flex: 1, height: '1px', background: '#e2e8f0'}}/><span>OR</span><div style={{flex: 1, height: '1px', background: '#e2e8f0'}}/></div>
                 <button className="big-qr-btn" onClick={() => setIsScannerOpen(true)}>
-                  <div className="qr-icon-bg"><QrCode size={28} /></div>
+                  <div className="qr-icon-bg"><QrCode size={28} strokeWidth={2.5}/></div>
                   <div className="qr-text-group">
                     <strong>Scan QR Code</strong>
                     <span>Find your position automatically</span>
                   </div>
+                  <ChevronRight size={20} color="#cbd5e1" style={{ marginLeft: 'auto' }} />
                 </button>
               </div>
             )}
 
             {/* AI Assistant Voice Input */}
             {(!searchQuery && !activeCategory) && (
-              <div className="voice-assistant-section-v4" style={{ marginTop: 16 }}>
-                <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
-                  Or use AI Assistant
+              <div className="voice-assistant-section-v4" style={{ marginTop: 24, padding: '16px', background: '#f8fafc', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+                <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1, height: '1px', background: '#cbd5e1' }} />
+                  <span>Or use AI Assistant</span>
+                  <div style={{ flex: 1, height: '1px', background: '#cbd5e1' }} />
                 </div>
                 <VoiceToTextMic onIntent={handleVoiceIntent} />
               </div>
@@ -527,51 +530,66 @@ export default function Landing() {
       {floorPickerOpen && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1500,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(6px)',
+          background: 'rgba(15, 23, 42, 0.4)',
+          backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'flex-end',
+          animation: 'fadeIn 0.2s ease-out'
         }} onClick={() => setFloorPickerOpen(false)}>
           <div
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%', background: 'white',
-              borderRadius: '24px 24px 0 0',
-              padding: '28px 24px 40px',
-              boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+              borderRadius: '28px 28px 0 0',
+              padding: '24px 24px 48px',
+              boxShadow: '0 -10px 40px rgba(0,0,0,0.15)',
+              transform: 'translateY(0)',
+              animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#e2e8f0', margin: '0 auto 20px' }} />
-            <h3 style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 18, color: '#1e293b' }}>Select Map for Search</h3>
-            <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: 13 }}>Search will show destinations from the selected map only</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ width: 48, height: 6, borderRadius: 3, background: '#cbd5e1', margin: '0 auto 24px' }} />
+            <h3 style={{ margin: '0 0 8px', fontWeight: 800, fontSize: '1.25rem', color: '#0f172a' }}>Select Map for Search</h3>
+            <p style={{ margin: '0 0 24px', color: '#64748b', fontSize: '0.95rem', fontWeight: 500 }}>Search will show destinations from the selected map only</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {availableFloors.map(floor => (
                 <button
                   key={floor.id}
                   onClick={() => handleFloorChosen(floor.id)}
                   style={{
-                    padding: '16px 20px', borderRadius: 14,
-                    border: '1.5px solid #e2e8f0',
+                    padding: '16px 20px', borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
                     background: 'white', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 14,
+                    display: 'flex', alignItems: 'center', gap: 16,
                     textAlign: 'left', transition: 'all 0.2s',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.05)';
+                    e.currentTarget.style.borderColor = '#cbd5e1';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'none';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
+                    e.currentTarget.style.borderColor = '#e2e8f0';
                   }}
                 >
                   <div style={{
-                    width: 40, height: 40, borderRadius: 12,
-                    background: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+                    width: 44, height: 44, borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    boxShadow: '0 4px 10px rgba(37,99,235,0.2)'
                   }}>
-                    <Map size={18} color="white" />
+                    <Map size={20} color="white" />
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: '#1e293b' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#0f172a' }}>
                       {floor.data?.meta?.floorName || floor.id}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 4, fontWeight: 500 }}>
                       {Object.keys(floor.data?.nodes || {}).length} nodes · {Object.keys(floor.data?.destinations || {}).length} destinations
                     </div>
                   </div>
-                  <ChevronRight size={18} color="#9ca3af" style={{ marginLeft: 'auto' }} />
+                  <ChevronRight size={20} color="#94a3b8" />
                 </button>
               ))}
             </div>

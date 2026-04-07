@@ -12,6 +12,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 pydantic_core==2.27.2
 python-dotenv==1.0.1
+rapidfuzz
 python-multipart==0.0.9
 PyYAML==6.0.3
 sniffio==1.3.1

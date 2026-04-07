@@ -450,6 +450,7 @@ const MapView = () => {
 
   const labelLayouts = useMemo(() => {
     if (!focusedDestinationMarkers.length) return [] as Array<{
+      pointerDir: string;
       key: string;
       dest: { name: string; x: number; y: number; id: string; pic: string };
       left: number;
@@ -472,6 +473,7 @@ const MapView = () => {
       fontSize: number;
       paddingX: number;
       paddingY: number;
+      pointerDir: 'bottom' | 'top' | 'left' | 'right';
     }> = [];
 
     const normalizedZoom = Math.max(cameraZoom, 0.35);
@@ -480,6 +482,9 @@ const MapView = () => {
     const zoomScale = Math.max(0.78, Math.min(1.18, normalizedZoom));
     const sharedSize = Math.max(7, Math.min(10, Math.round(baseSize * zoomScale)));
     const minGap = MIN_LABEL_SPACING;
+
+    // We consider the pointer height (the tail pointing to the node) when checking intersections
+    const pointerHeight = 6;
 
     const intersects = (box: { left: number; top: number; right: number; bottom: number }) => {
       return placed.some((p) => (
@@ -497,31 +502,41 @@ const MapView = () => {
       const width = textWidth + paddingX * 2;
       const height = fontSize + paddingY * 2 + 2;
 
-      const baseYOffset = 14;
-      const candidates = [
-        { dx: 0, dy: -baseYOffset },
-        { dx: 0, dy: -(baseYOffset + height + minGap) },
-        { dx: -Math.round(width * 0.55), dy: -baseYOffset },
-        { dx: Math.round(width * 0.55), dy: -baseYOffset },
-        { dx: 0, dy: -(baseYOffset + 2 * (height + minGap)) },
+      // Base offset: try placing above, right, left, or bottom.
+      const offsets = [
+        { dx: -width/2, dy: -(height + pointerHeight), dir: 'bottom' as const }, // Top (pointer down)
+        { dx: pointerHeight, dy: -height/2, dir: 'left' as const }, // Right (pointer left)
+        { dx: -(width + pointerHeight), dy: -height/2, dir: 'right' as const }, // Left (pointer right)
+        { dx: -width/2, dy: pointerHeight, dir: 'top' as const }, // Bottom (pointer up)
       ];
 
       let placedBox: { left: number; top: number; right: number; bottom: number } | null = null;
-      for (const c of candidates) {
-        const left = dest.x + c.dx - width / 2;
-        const top = dest.y + c.dy - height;
-        const box = { left, top, right: left + width, bottom: top + height };
-        if (!intersects(box)) {
-          placedBox = box;
+      let chosenPointerDir: 'bottom' | 'top' | 'left' | 'right' = 'bottom';
+
+      for (let i = 0; i < offsets.length; i++) {
+        const offset = offsets[i];
+        let tryBox;
+        
+        tryBox = { 
+          left: dest.x + offset.dx, 
+          top: dest.y + offset.dy, 
+          right: dest.x + offset.dx + width, 
+          bottom: dest.y + offset.dy + height 
+        };
+
+        if (!intersects(tryBox)) {
+          placedBox = tryBox;
+          chosenPointerDir = offset.dir;
           break;
         }
       }
 
-      // Fallback keeps moving label upward until there is no collision.
+      // Fallback keeps moving label upward until there is no collision, enforcing bottom pointer.
       if (!placedBox) {
-        let top = dest.y - baseYOffset - height;
+        let top = dest.y - (height + pointerHeight) - minGap;
         const left = dest.x - width / 2;
         let guard = 0;
+        chosenPointerDir = 'bottom';
         while (guard < 60) {
           const box = { left, top, right: left + width, bottom: top + height };
           if (!intersects(box)) {
@@ -549,6 +564,7 @@ const MapView = () => {
         fontSize,
         paddingX,
         paddingY,
+        pointerDir: chosenPointerDir,
       });
     });
 
@@ -1416,19 +1432,67 @@ const MapView = () => {
                     fontSize: layout.fontSize,
                     fontWeight: 600,
                     border: "1px solid #dbe7f5",
-                    boxShadow: "0 6px 14px rgba(15,23,42,0.12)",
-                    whiteSpace: "nowrap",
+                    boxShadow: "0 8px 18px rgba(15,23,42,0.14)",
                     width: layout.width,
                     maxWidth: layout.width,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    /* IMPORTANT: Removed overflow: hidden so the pointer can render outside the box */
                     transition: "opacity 0.16s ease, transform 0.16s ease",
                     cursor: "pointer",
                     zIndex: 29 + idx,
                     userSelect: "none",
+                    display: "flex",
+                    alignItems: "center",
                   }}
                 >
-                  📍 {layout.dest.name}
+                  {
+                    /* Create the pointer using a rotated CSS square */
+                    (() => {
+                      const sqSize = 14;
+                      const offset = -(sqSize / 2); // -7px
+                      let placementStyle: React.CSSProperties = {};
+                      
+                      if (layout.pointerDir === 'bottom') {
+                        placementStyle = { bottom: offset, left: '50%', transform: 'translateX(-50%) rotate(45deg)' };
+                      } else if (layout.pointerDir === 'top') {
+                        placementStyle = { top: offset, left: '50%', transform: 'translateX(-50%) rotate(45deg)' };
+                      } else if (layout.pointerDir === 'left') {
+                        placementStyle = { left: offset, top: '50%', transform: 'translateY(-50%) rotate(45deg)' };
+                      } else if (layout.pointerDir === 'right') {
+                        placementStyle = { right: offset, top: '50%', transform: 'translateY(-50%) rotate(45deg)' };
+                      }
+
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            width: sqSize,
+                            height: sqSize,
+                            background: 'inherit',
+                            border: '1px solid #dbe7f5',
+                            borderTop: 'none',
+                            borderLeft: 'none',
+                            zIndex: -1,
+                            boxShadow: "3px 3px 6px rgba(15,23,42,0.06)",
+                            ...placementStyle,
+                            // Adjust borders based on direction so we only render the "outside" borders
+                            ...(layout.pointerDir === 'bottom' ? { borderTop: 'none', borderLeft: 'none', borderBottom: '1px solid #dbe7f5', borderRight: '1px solid #dbe7f5' } : {}),
+                            ...(layout.pointerDir === 'top' ? { borderBottom: 'none', borderRight: 'none', borderTop: '1px solid #dbe7f5', borderLeft: '1px solid #dbe7f5', boxShadow: "-3px -3px 6px rgba(15,23,42,0.06)" } : {}),
+                            ...(layout.pointerDir === 'left' ? { borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #dbe7f5', borderLeft: '1px solid #dbe7f5', boxShadow: "-3px 3px 6px rgba(15,23,42,0.06)" } : {}),
+                            ...(layout.pointerDir === 'right' ? { borderBottom: 'none', borderLeft: 'none', borderTop: '1px solid #dbe7f5', borderRight: '1px solid #dbe7f5', boxShadow: "3px -3px 6px rgba(15,23,42,0.06)" } : {}),
+                          }}
+                        />
+                      );
+                    })()
+                  }
+                  <span style={{ 
+                    whiteSpace: "nowrap", 
+                    overflow: "hidden", 
+                    textOverflow: "ellipsis", 
+                    width: "100%",
+                    display: "block"
+                  }}>
+                    📍 {layout.dest.name}
+                  </span>
                 </div>
               ))}
               <div style={{ position: "absolute", left: snappedPos.x, top: snappedPos.y, transform: `translate(-50%, -50%) rotate(${heading}deg)`, transition: "transform 120ms linear", willChange: "transform", zIndex: 30 }}>
