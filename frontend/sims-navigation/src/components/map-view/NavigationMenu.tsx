@@ -6,10 +6,12 @@ interface NavigationMenuProps {
   onStopNavigation: () => void;
   onPrevStep: () => void;
   onNextStep: () => void;
+  onPinLocation?: () => void;
   isDarkMode?: boolean;
-  destName?: string;
   totalRem?: number;
   currentSpeed?: number;
+  onShowSteps?: () => void;
+  destName?: string;
 }
 
 const NavigationMenu: React.FC<NavigationMenuProps> = ({
@@ -18,6 +20,8 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
   onStopNavigation,
   onPrevStep,
   onNextStep,
+  onPinLocation,
+  onShowSteps,
   destName,
   totalRem,
   currentSpeed = 0,
@@ -54,8 +58,24 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
       <div style={{ marginBottom: "4px" }}>
         {isNavActive && totalRem !== undefined ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", backgroundColor: "rgba(255,255,255,0.6)", borderRadius: "20px", padding: "16px", boxShadow: "inset 0 2px 4px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.04)" }}>
-            <div style={{ fontSize: "16px", fontWeight: 700, color: "#1F2937", textAlign: "center" }}>
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "#1F2937", textAlign: "center", position: "relative" }}>
               Navigating to <span style={{ color: "#2563EB" }}>{destName || "Unknown"}</span>
+              {onShowSteps && (
+                <button 
+                  onClick={onShowSteps} 
+                  title="Route Steps"
+                  style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: "4px" }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                </button>
+              )}
             </div>
             
             {/* Metrics Dashboard */}
@@ -101,6 +121,56 @@ const NavigationMenu: React.FC<NavigationMenuProps> = ({
             </div>
             <div style={{ fontSize: "14px", color: "#64748B", marginTop: "6px" }}>
               {destName ? "Tap Start Navigation when you are ready" : "Choose a destination to continue"}
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+              {onPinLocation && !isNavActive && (
+                <button 
+                  onClick={onPinLocation}
+                  style={{ 
+                    backgroundColor: "rgba(59, 130, 246, 0.08)", 
+                    color: "#2563EB", 
+                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                    borderRadius: "12px", 
+                    padding: "8px 14px", 
+                    fontSize: "13px", 
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  📍 Not here? Pin
+                </button>
+              )}
+              {onShowSteps && destName && (
+                <button 
+                  onClick={onShowSteps}
+                  style={{ 
+                    backgroundColor: "rgba(100, 116, 139, 0.08)", 
+                    color: "#475569", 
+                    border: "1px solid rgba(100, 116, 139, 0.2)",
+                    borderRadius: "12px", 
+                    padding: "8px 14px", 
+                    fontSize: "13px", 
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  Steps
+                </button>
+              )}
             </div>
           </div>
         )}

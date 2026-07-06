@@ -6,15 +6,18 @@ interface TestMapProps {
   actualPath?: { x: number; y: number }[];
   isDeviated?: boolean;
   floorData?: any;
+  nodeMap?: Record<string, { x: number; y: number; type: string }>;
 }
 
 const TestMap: React.FC<TestMapProps> = ({
   routePath = [],
   actualPath = [],
   isDeviated = false,
-  floorData
+  floorData,
+  nodeMap
 }) => {
   const currentData = floorData || testDataDefault;
+  const activeNodes = nodeMap || (currentData.nodes as Record<string, { x: number; y: number }>);
 
   const [dimensions, setDimensions] = useState({
     width: 0,
@@ -49,15 +52,26 @@ const TestMap: React.FC<TestMapProps> = ({
 
   const polylinePoints = useMemo(() => {
     if (!routePath || routePath.length < 2) return "";
-    const nodes = currentData.nodes as Record<string, { x: number; y: number }>;
     return routePath
       .map((nodeId) => {
-        const node = nodes[nodeId];
+        const node = activeNodes[nodeId];
         return node ? `${node.x},${node.y}` : null;
       })
       .filter((p) => p !== null)
       .join(" ");
-  }, [routePath, currentData.nodes]);
+  }, [routePath, activeNodes]);
+
+  const routePathString = useMemo(() => {
+    if (!routePath || routePath.length < 2) return "";
+    const pts = routePath
+      .map((nodeId) => {
+        const node = activeNodes[nodeId];
+        return node ? `${node.x},${node.y}` : null;
+      })
+      .filter((p) => p !== null);
+    if (pts.length < 2) return "";
+    return `M ${pts[0]} L ${pts.slice(1).join(" L ")}`;
+  }, [routePath, activeNodes]);
 
   const actualPolylinePoints = useMemo(() => {
     if (!actualPath || actualPath.length < 2) return "";
@@ -155,6 +169,13 @@ const TestMap: React.FC<TestMapProps> = ({
           </g>
         )}
 
+        {/* Animated ball along the path to show direction */}
+        {routePathString && (
+          <circle r="8" fill="#F59E0B" style={{ filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.4))" }}>
+            <animateMotion path={routePathString} dur="3.5s" repeatCount="indefinite" />
+          </circle>
+        )}
+
         {actualPolylinePoints && (
           <polyline
             points={actualPolylinePoints}
@@ -172,8 +193,8 @@ const TestMap: React.FC<TestMapProps> = ({
           <>
             <g
               transform={`translate(${
-                (currentData.nodes as any)[routePath[0]]?.x
-              }, ${(currentData.nodes as any)[routePath[0]]?.y})`}
+                activeNodes[routePath[0]]?.x || 0
+              }, ${activeNodes[routePath[0]]?.y || 0})`}
             >
               <circle r="24" fill="#22C55E" opacity="0.4">
                 <animate
@@ -194,13 +215,9 @@ const TestMap: React.FC<TestMapProps> = ({
 
             <g
               transform={`translate(${
-                (currentData.nodes as any)[
-                  routePath[routePath.length - 1]
-                ]?.x
+                activeNodes[routePath[routePath.length - 1]]?.x || 0
               }, ${
-                (currentData.nodes as any)[
-                  routePath[routePath.length - 1]
-                ]?.y
+                activeNodes[routePath[routePath.length - 1]]?.y || 0
               })`}
             >
               <path

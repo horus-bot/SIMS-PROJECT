@@ -17,6 +17,7 @@ import NavigationMenu from "../components/map-view/NavigationMenu";
 import LocationConfirmCard from "../components/map-view/LocationConfirmCard";
 import TurnConfirmCard from "../components/map-view/TurnConfirmCard";
 import QRScanner from "../components/QRScanner";
+import RouteGuide, { type RouteStep } from "../components/map-view/RouteGuide";
 
 // Types
 interface DestinationData { node: string; pic: string }
@@ -49,8 +50,6 @@ const FIXED_PITCH = 0;
 const MAX_INITIAL_ZOOM = 4;  // balanced zoom level for good detail without being too close
 const INITIAL_ZOOM_BOOST = 2;
 const DRAG_DISABLE_AUTOFOLLOW_THRESHOLD_PX = 8;
-const LABEL_FOCUS_BOX_WIDTH = 320;
-const LABEL_FOCUS_BOX_HEIGHT = 220;
 const MAX_VISIBLE_LABELS = 6;
 const MIN_LABEL_SPACING = 6;
 
@@ -59,6 +58,7 @@ const MapView = () => {
   const [searchParams] = useSearchParams();
   const [isNavActive, setIsNavActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [showRouteGuide, setShowRouteGuide] = useState(false);
 
   const rawOrigin = searchParams.get("originName") || searchParams.get("origin");
   const rawDest = searchParams.get("destName") || searchParams.get("dest");
@@ -70,10 +70,10 @@ const MapView = () => {
   const [activeDestRef, setActiveDestRef] = useState<string | null>(rawDest);
 
   const isCrossFloor = originFloorParam !== destFloorParam;
-  const [connectorMode, setConnectorMode] = useState<ConnectorMode | null>(null);
+  const [connectorMode, setConnectorMode] = useState<ConnectorMode | null>(isCrossFloor ? "lift" : null);
   const [selectedConnectorName, setSelectedConnectorName] = useState<string | null>(null);
   const [crossFloorPhase, setCrossFloorPhase] = useState<"single-floor" | "mode-selection" | "to-connector" | "await-transfer" | "to-final">(
-    isCrossFloor ? "mode-selection" : "single-floor",
+    isCrossFloor ? "to-connector" : "single-floor",
   );
 
   const typedTestData = floors[currentFloorId] || floors["test"];
@@ -92,7 +92,7 @@ const MapView = () => {
   const [overrideOriginId, setOverrideOriginId] = useState<string | null>(null);
   const effectiveOriginId = overrideOriginId ?? originId;
   const [tempOriginNode, setTempOriginNode] = useState<{ id: string; x: number; y: number; anchorId: string } | null>(null);
-  const [showInitialPinPrompt, setShowInitialPinPrompt] = useState(true);
+  const [showInitialPinPrompt, setShowInitialPinPrompt] = useState(false);
   
   const nodeMap = useMemo(() => typedTestData.nodes as Record<string, NodeType>, [typedTestData]);
   const effectiveNodeMap = useMemo(() => {
@@ -252,9 +252,14 @@ const MapView = () => {
     setCurrentFloorId(originFloorParam);
     setActiveOriginRef(rawOrigin);
     setActiveDestRef(rawDest);
-    setConnectorMode(null);
     setSelectedConnectorName(null);
-    setCrossFloorPhase(isCrossFloor ? "mode-selection" : "single-floor");
+    if (isCrossFloor) {
+      setConnectorMode("lift");
+      setCrossFloorPhase("to-connector");
+    } else {
+      setConnectorMode(null);
+      setCrossFloorPhase("single-floor");
+    }
   }, [originFloorParam, destFloorParam, rawOrigin, rawDest, isCrossFloor]);
 
   useEffect(() => {
@@ -315,6 +320,89 @@ const MapView = () => {
   const [repinNearest, setRepinNearest] = useState<{id:string; x:number; y:number; name:string; dist:number} | null>(null);
   const skipNextInitialPinPromptRef = useRef(false);
 
+  const routeSteps = useMemo(() => {
+    if (!routePathInfo.points.length || !effectiveNodeMap) return [];
+    const points = routePathInfo.points;
+    const PX_PER_M = 12.2;
+    const steps: RouteStep[] = [];
+    
+    // Add start step
+    steps.push({
+      id: 'start',
+      type: 'start',
+      distance: 0,
+      instruction: 'Start navigation'
+    });
+
+    let currentSegmentStart = 0;
+    
+    for (let i = 0; i < points.length; i++) {
+      if (i >= points.length - 2) break;
+      
+      const curr = points[i];
+      const next = points[i + 1];
+      const after = points[i + 2];
+      
+      const a1 = Math.atan2(next.y - curr.y, next.x - curr.x);
+      const a2 = Math.atan2(after.y - next.y, after.x - next.x);
+      let diff = a2 - a1;
+      
+      while (diff <= -Math.PI) diff += 2 * Math.PI;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      
+      if (Math.abs(diff) > 0.5) {
+        let dist = 0;
+        for (let j = currentSegmentStart; j <= i; j++) {
+           dist += Math.hypot(points[j+1].x - points[j].x, points[j+1].y - points[j].y);
+        }
+        
+        const distM = Math.max(0, dist / PX_PER_M);
+        
+        if (distM > 1) {
+          steps.push({
+            id: `straight-${i}`,
+            type: "straight",
+            distance: distM,
+            instruction: `Go straight for ${Math.round(distM)}m`
+          });
+        }
+        
+        const turnType = diff > 0 ? "right" : "left";
+        steps.push({
+          id: `turn-${i}`,
+          type: turnType,
+          distance: 0,
+          instruction: `Turn ${turnType}`
+        });
+        
+        currentSegmentStart = i + 1;
+      }
+    }
+    
+    let finalDist = 0;
+    for (let j = currentSegmentStart; j < points.length - 1; j++) {
+      finalDist += Math.hypot(points[j+1].x - points[j].x, points[j+1].y - points[j].y);
+    }
+    const finalDistM = Math.max(0, finalDist / PX_PER_M);
+    if (finalDistM > 1) {
+      steps.push({
+        id: `straight-finish`,
+        type: "straight",
+        distance: finalDistM,
+        instruction: `Go straight for ${Math.round(finalDistM)}m`
+      });
+    }
+    
+    steps.push({
+      id: `finish`,
+      type: "finish",
+      distance: 0,
+      instruction: "Arrive at destination"
+    });
+    
+    return steps;
+  }, [routePathInfo, effectiveNodeMap]);
+
   // Moved up camera refs & states since they're used in effectiveViewCenter early on
   const camState = useRef({ x: 0, y: 0, zoom: 1, bearing: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -359,7 +447,7 @@ const MapView = () => {
       skipNextInitialPinPromptRef.current = false;
       setShowInitialPinPrompt(false);
     } else {
-      setShowInitialPinPrompt(true);
+      setShowInitialPinPrompt(false);
     }
     // Reset only when a fresh route request comes in via URL params.
     // Avoid resetting on internal state transitions (e.g., connector target selection),
@@ -374,10 +462,10 @@ const MapView = () => {
   const { rawPos, heading, forceSetPos, currentSpeed: _currentSpeed } = usePDR(
     startNode.x,
     startNode.y,
-    isNavActive,
+    false,
     0,
     routePath,
-    isPaused,
+    true,
     effectiveNodeMap,
   );
 
@@ -390,63 +478,14 @@ const MapView = () => {
     if (originNode) forceSetPos(originNode.x, originNode.y);
   }, [effectiveOriginId, currentFloorId, isNavActive, effectiveNodeMap, forceSetPos]);
 
-  const [viewCenter, setViewCenter] = useState<{x: number, y: number} | null>(null);
 
-  const throttledUpdateViewCenter = useMemo(() => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    return () => {
-      if (timeout) return;
-      timeout = setTimeout(() => {
-        timeout = null;
-        if (!viewportRef.current) return;
-        const vp = viewportRef.current;
-        const { x: camX, y: camY, zoom } = camState.current;
-        const cx = (vp.clientWidth / 2 - camX) / zoom;
-        const cy = (vp.clientHeight / 2 - camY) / zoom;
-        setViewCenter({ x: cx, y: cy });
-      }, 80);
-    };
-  }, []);
 
-  const effectiveViewCenter = useMemo(() => {
-    if (autoFollow || !viewCenter) return snappedPos;
-    return viewCenter;
-  }, [autoFollow, viewCenter, snappedPos]);
 
-  // Invisible moving focus-box around user pointer: only labels inside this box are shown.
-  const dynamicVisibleLabelCap = useMemo(() => {
-    if (cameraZoom < 0.55) return 2;
-    if (cameraZoom < 0.8) return 3;
-    if (cameraZoom < 1.15) return 4;
-    return MAX_VISIBLE_LABELS;
-  }, [cameraZoom]);
 
+  // Show all labels without limiting by box
   const focusedDestinationMarkers = useMemo(() => {
-    if (!destinationMarkers.length) return [];
-
-    // Keep focus-box screen size stable across zoom levels by converting to map-space.
-    const normalizedZoom = Math.max(cameraZoom, 0.25);
-    const halfW = (LABEL_FOCUS_BOX_WIDTH / normalizedZoom) / 2;
-    const halfH = (LABEL_FOCUS_BOX_HEIGHT / normalizedZoom) / 2;
-    const inBox = destinationMarkers
-      .filter((dest) => Math.abs(dest.x - effectiveViewCenter.x) <= halfW && Math.abs(dest.y - effectiveViewCenter.y) <= halfH)
-      .sort((a, b) => {
-        const da = Math.hypot(a.x - effectiveViewCenter.x, a.y - effectiveViewCenter.y);
-        const db = Math.hypot(b.x - effectiveViewCenter.x, b.y - effectiveViewCenter.y);
-        return da - db;
-      });
-
-    if (inBox.length > 0) return inBox.slice(0, dynamicVisibleLabelCap);
-
-    // Keep one nearby label when box is empty so context is not lost.
-    const nearest = destinationMarkers.reduce((best, curr) => {
-      const bestDist = Math.hypot(best.x - effectiveViewCenter.x, best.y - effectiveViewCenter.y);
-      const currDist = Math.hypot(curr.x - effectiveViewCenter.x, curr.y - effectiveViewCenter.y);
-      return currDist < bestDist ? curr : best;
-    });
-
-    return nearest ? [nearest] : [];
-  }, [destinationMarkers, effectiveViewCenter, cameraZoom, dynamicVisibleLabelCap]);
+    return destinationMarkers;
+  }, [destinationMarkers]);
 
   const labelLayouts = useMemo(() => {
     if (!focusedDestinationMarkers.length) return [] as Array<{
@@ -709,7 +748,10 @@ const MapView = () => {
     if (repinModeSource === "initial") {
       setShowInitialPinPrompt(false);
       if (isCrossFloor) {
-        setCrossFloorPhase("mode-selection");
+        setCrossFloorPhase("to-connector");
+        setTimeout(() => {
+          startNavigation();
+        }, 0);
       } else {
         setTimeout(() => {
           startNavigation();
@@ -819,14 +861,6 @@ const MapView = () => {
   };
   const handleRejectLocation = () => setLocationToConfirm(null);
 
-  const handleChooseConnectorMode = (mode: ConnectorMode) => {
-    setConnectorMode(mode);
-    setCrossFloorPhase("to-connector");
-    setShowInitialPinPrompt(false);
-    setTimeout(() => {
-      startNavigation();
-    }, 0);
-  };
 
   const handleConfirmReachedTargetFloor = () => {
     if (!connectorMode) return;
@@ -1082,7 +1116,6 @@ const MapView = () => {
         camState.current.x = finalC.x;
         camState.current.y = finalC.y;
         syncCameraZoom(finalC.z);
-        throttledUpdateViewCenter();
       }
       lastPinch.current = dist;
       return;
@@ -1110,7 +1143,6 @@ const MapView = () => {
       camState.current.x = c.x;
       camState.current.y = c.y;
       lastPointer.current = { x: e.clientX, y: e.clientY };
-      throttledUpdateViewCenter();
       if (isRepinning) debouncedRepinEval(); // live-evaluate while user pans in repin mode
     }
   };
@@ -1153,7 +1185,6 @@ const MapView = () => {
     camState.current.x = c.x;
     camState.current.y = c.y;
     syncCameraZoom(c.z);
-    throttledUpdateViewCenter();
   };
 
   const allowNoRouteYet = isCrossFloor && crossFloorPhase === "mode-selection";
@@ -1269,63 +1300,42 @@ const MapView = () => {
         </span>
       </div>
 
-      {isCrossFloor && crossFloorPhase === "mode-selection" && !showInitialPinPrompt && !isRepinning && !!tempOriginNode && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 24,
-            transform: "translateX(-50%)",
-            width: "min(92vw, 420px)",
-            background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
-            border: "1px solid #bfdbfe",
-            borderRadius: 20,
-            padding: "15px 15px 13px",
-            boxShadow: "0 20px 36px rgba(15,23,42,0.2)",
-            zIndex: 700,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 10px rgba(37,99,235,0.5)" }} />
-            Choose How To Change Floors
-          </div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12, lineHeight: 1.5 }}>
-            Origin pinned on {typedTestData.meta.floorName}. Now select your preferred connector.
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => handleChooseConnectorMode("stairs")}
-              style={{
-                flex: 1,
-                border: "1px solid #bfdbfe",
-                background: "#eff6ff",
-                color: "#1e40af",
-                borderRadius: 12,
-                padding: "10px 8px",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Use stairs
-            </button>
-            <button
-              onClick={() => handleChooseConnectorMode("lift")}
-              style={{
-                flex: 1,
-                border: "none",
-                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
-                color: "white",
-                borderRadius: 12,
-                padding: "10px 8px",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Use lift
-            </button>
-          </div>
+      {isCrossFloor && crossFloorPhase === "to-connector" && !showInitialPinPrompt && !isRepinning && (
+        <div style={{
+          position: "absolute",
+          top: isNavActive ? 75 : 85,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "rgba(255,255,255,0.95)",
+          border: "1px solid #d7e3f3",
+          padding: "8px 14px",
+          borderRadius: 20,
+          boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          zIndex: 510,
+          display: "flex",
+          alignItems: "center",
+          gap: 12
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", textTransform: "capitalize" }}>Routing via {connectorMode}</span>
+          <button
+            onClick={() => {
+              setConnectorMode(connectorMode === "lift" ? "stairs" : "lift");
+            }}
+            style={{
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              color: "#1d4ed8",
+              padding: "5px 12px",
+              borderRadius: 12,
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Change to {connectorMode === "lift" ? "stairs" : "lift"}
+          </button>
         </div>
       )}
 
@@ -1400,7 +1410,7 @@ const MapView = () => {
           onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
           <div ref={map3DRef} style={{ width: "100%", height: "100%" }}>
             <div ref={cameraLayerRef} style={{ position: "absolute", inset: 0, transformOrigin: "0 0", willChange: "transform" }}>
-              <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} />
+              <TestMap routePath={routePath} actualPath={actualPath} isDeviated={isDeviated} floorData={typedTestData} nodeMap={effectiveNodeMap} />
               {tempOriginNode && (
                 <div
                   style={{
@@ -1528,55 +1538,7 @@ const MapView = () => {
         </button>
       )}
 
-      {!isNavActive && showInitialPinPrompt && !isRepinning && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 24,
-            transform: "translateX(-50%)",
-            width: "min(92vw, 380px)",
-            background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
-            border: "1px solid #bfdbfe",
-            borderRadius: 20,
-            padding: "16px 14px 13px",
-            boxShadow: "0 20px 36px rgba(15,23,42,0.2)",
-            zIndex: 620,
-            color: "#0f172a",
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2563eb", boxShadow: "0 0 10px rgba(37,99,235,0.5)" }} />
-            Confirm Your Start Point
-          </div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
-            {isCrossFloor
-              ? "Pin your origin location first. Next, you will choose lift or stairs."
-              : "Pin your current location and we will start navigation from that exact point."}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => {
-                setShowInitialPinPrompt(false);
-                startRepinMode("initial");
-              }}
-              style={{
-                width: "100%",
-                border: "none",
-                background: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
-                color: "white",
-                borderRadius: 12,
-                padding: "10px 8px",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Pin My Location
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* ── Re-pin overlay: fixed center crosshair on the live map ── */}
       {isRepinning && (
@@ -1726,6 +1688,8 @@ const MapView = () => {
         onStopNavigation={() => setIsNavActive(false)}
         onPrevStep={handlePrevStep}
         onNextStep={handleNextStep}
+        onPinLocation={() => startRepinMode("initial")}
+        onShowSteps={routeSteps.length > 2 ? () => setShowRouteGuide(true) : undefined}
         destName={
           crossFloorPhase === "to-connector" && connectorMode
             ? `Nearest ${connectorMode}`
@@ -1746,6 +1710,14 @@ const MapView = () => {
           </div>
         </div>
       )}
+
+      <RouteGuide 
+        steps={routeSteps} 
+        isOpen={showRouteGuide} 
+        onClose={() => setShowRouteGuide(false)} 
+        destinationName={rawDest || "Destination"} 
+        totalDistance={routePathInfo.totalDist / 12.2} 
+      />
     </div>
   );
 };
