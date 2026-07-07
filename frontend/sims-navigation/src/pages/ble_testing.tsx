@@ -1,7 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// --- KALMAN FILTER IMPLEMENTATION ---
+class KalmanFilter {
+  private r: number; // Process noise (How fast we expect the user to actually move)
+  private q: number; // Measurement noise (How noisy the raw BLE signal is)
+  private p: number; // Estimated error covariance
+  private x: number; // Estimated signal
+
+  constructor(r = 0.05, q = 5.0) {
+    this.r = r;
+    this.q = q;
+    this.p = 10; // Initial arbitrary error
+    this.x = NaN;
+  }
+
+  filter(measurement: number) {
+    if (isNaN(this.x)) {
+      this.x = measurement;
+    } else {
+      // Prediction update
+      this.p = this.p + this.r;
+      // Measurement update
+      const k = this.p / (this.p + this.q); // Kalman Gain
+      this.x = this.x + k * (measurement - this.x);
+      this.p = (1 - k) * this.p;
+    }
+    return this.x;
+  }
+
+  reset() {
+    this.x = NaN;
+    this.p = 10;
+  }
+}
+
 // Distance calculation formula using RSSI
-// TX_POWER is the expected RSSI at exactly 1 meter away.
+// TX_POWER is the expected RSSI at exactly 1 meter away (Calibrate this!)
 // N is the environmental factor (2.0 for open space, 3.0 for typical indoor walls/bodies)
 const calculateDistance = (rssi: number, txPower: number = -59, n: number = 3.0) => {
   if (rssi === 0) return -1.0; 
@@ -13,19 +47,22 @@ const BleTestingPage: React.FC = () => {
   const [isSupported, setIsSupported] = useState<boolean>(true);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [device, setDevice] = useState<any>(null);
+  
   const [rssi, setRssi] = useState<number | null>(null);
-  
-  // --- NEW STATE: Track the smoothed out signal ---
   const [smoothedRssi, setSmoothedRssi] = useState<number | null>(null);
-  
   const [distance, setDistance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const deviceRef = useRef<any>(null);
+  
+  // Persist the Kalman filter instance across React renders
+  const kalmanRef = useRef(new KalmanFilter(0.1, 4.0)); 
+  // Tip: R=0.1, Q=4.0 is a great starting point for indoor walking.
+  // Increase Q (e.g., 8.0) if the distance still jumps too much when standing still.
+  // Increase R (e.g., 0.5) if the distance lags behind you when you walk fast.
 
   useEffect(() => {
     // Check if Web Bluetooth is available in this browser
-    // Cast navigator to any to bypass TypeScript's missing Web Bluetooth types
     if (!(navigator as any).bluetooth) {
       setIsSupported(false);
     }
@@ -33,10 +70,9 @@ const BleTestingPage: React.FC = () => {
 
   const startScanning = async () => {
     setError(null);
-    setSmoothedRssi(null); // Reset smoothing on new scan
+    kalmanRef.current.reset(); // Reset filter history for a clean start
+    
     try {
-      // 1. Request permission from the user to see Bluetooth devices
-      // We accept all devices for easy testing of your ESP32
       const bluetoothDevice = await (navigator as any).bluetooth.requestDevice({
         acceptAllDevices: true,
       });
@@ -44,36 +80,19 @@ const BleTestingPage: React.FC = () => {
       setDevice(bluetoothDevice);
       deviceRef.current = bluetoothDevice;
 
-      // 2. Listen for the advertisement packets (this contains the RSSI)
       bluetoothDevice.addEventListener('advertisementreceived', (event: any) => {
         const currentRssi = event.rssi;
-        setRssi(currentRssi); // Keep raw RSSI for the UI
+        setRssi(currentRssi); // Raw signal
         
-        // --- NEW CODE: Exponential Moving Average (Shock Absorber) ---
-        setSmoothedRssi(prevRssi => {
-          if (prevRssi === null) {
-            // First reading: no smoothing needed yet
-            const initialDistance = calculateDistance(currentRssi, -59, 2.5);
-            setDistance(initialDistance);
-            return currentRssi;
-          }
-          
-          // Smoothing Factor (0.0 to 1.0)
-          // 0.1 = Very smooth, ignores spikes, but slow to update when you walk.
-          // 0.8 = Very responsive, but jittery. 
-          // 0.15 is the sweet spot for indoor BLE beacons.
-          const SMOOTHING_FACTOR = 0.15; 
-          const newSmoothed = (SMOOTHING_FACTOR * currentRssi) + ((1 - SMOOTHING_FACTOR) * prevRssi);
-          
-          // Calculate distance using the SMOOTHED signal, not the raw one!
-          const estimatedDistance = calculateDistance(newSmoothed, -59, 2.5);
-          setDistance(estimatedDistance);
-          
-          return newSmoothed;
-        });
+        // Pass the raw signal through the Kalman Filter
+        const cleanRssi = kalmanRef.current.filter(currentRssi);
+        setSmoothedRssi(cleanRssi);
+        
+        // Calculate distance using the filtered signal
+        const estimatedDistance = calculateDistance(cleanRssi, -59, 2.5);
+        setDistance(estimatedDistance);
       });
 
-      // 3. Start watching for advertisements (requires Chrome 87+)
       if (bluetoothDevice.watchAdvertisements) {
         await bluetoothDevice.watchAdvertisements();
         setIsScanning(true);
@@ -93,7 +112,7 @@ const BleTestingPage: React.FC = () => {
     setIsScanning(false);
     setDevice(null);
     setRssi(null);
-    setSmoothedRssi(null); // Clear smoothed state
+    setSmoothedRssi(null);
     setDistance(null);
   };
 
@@ -120,7 +139,7 @@ const BleTestingPage: React.FC = () => {
           </div>
           <div>
             <h3 style={{ fontWeight: 'bold', color: '#111827', margin: 0 }}>ESP32 BLE Scanner</h3>
-            <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>Using RSSI Signal Strength</p>
+            <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>Kalman Filter Enabled</p>
           </div>
         </div>
 
@@ -142,15 +161,14 @@ const BleTestingPage: React.FC = () => {
               Connected: <span style={{ color: '#2563eb' }}>{device.name || "Unknown ESP32"}</span>
             </div>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.05em' }}>Signal (RSSI)</span>
-              <span style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: 'bold', color: '#1f2937' }}>{rssi !== null ? `${rssi} dBm` : '--'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.05em' }}>Raw Signal (Noisy)</span>
+              <span style={{ fontSize: '14px', fontFamily: 'monospace', color: '#6b7280' }}>{rssi !== null ? `${rssi} dBm` : '--'}</span>
             </div>
 
-            {/* Optional: Add this block to see the mathematical smoothing happening in real-time */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '12px' }}>
-              <span style={{ fontSize: '10px', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.05em' }}>Smoothed Signal</span>
-              <span style={{ fontSize: '14px', fontFamily: 'monospace', color: '#6b7280' }}>{smoothedRssi !== null ? `${smoothedRssi.toFixed(1)} dBm` : '--'}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' }}>
+              <span style={{ fontSize: '12px', color: '#1f2937', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.05em' }}>Kalman Signal</span>
+              <span style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981' }}>{smoothedRssi !== null ? `${smoothedRssi.toFixed(1)} dBm` : '--'}</span>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -191,6 +209,5 @@ const BleTestingPage: React.FC = () => {
     </div>
   );
 };
-
 
 export default BleTestingPage;
