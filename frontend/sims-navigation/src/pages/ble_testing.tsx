@@ -37,7 +37,7 @@ class KalmanFilter {
 // Distance calculation formula using RSSI
 // TX_POWER is the expected RSSI at exactly 1 meter away (Calibrate this!)
 // N is the environmental factor (2.0 for open space, 3.0 for typical indoor walls/bodies)
-const calculateDistance = (rssi: number, txPower: number = -59, n: number = 3.0) => {
+const calculateDistance = (rssi: number, txPower: number = -47, n: number = 0.6) => {
   if (rssi === 0) return -1.0; 
   const ratio = (txPower - rssi) / (10 * n);
   return Math.pow(10, ratio);
@@ -53,13 +53,15 @@ const BleTestingPage: React.FC = () => {
   const [distance, setDistance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // --- CALIBRATION STATES ---
+  // Using the defaults from your code snippet
+  const [txPower, setTxPower] = useState<number>(-47); 
+  const [envFactor, setEnvFactor] = useState<number>(0.6);
+
   const deviceRef = useRef<any>(null);
   
   // Persist the Kalman filter instance across React renders
   const kalmanRef = useRef(new KalmanFilter(0.1, 4.0)); 
-  // Tip: R=0.1, Q=4.0 is a great starting point for indoor walking.
-  // Increase Q (e.g., 8.0) if the distance still jumps too much when standing still.
-  // Increase R (e.g., 0.5) if the distance lags behind you when you walk fast.
 
   useEffect(() => {
     // Check if Web Bluetooth is available in this browser
@@ -67,6 +69,13 @@ const BleTestingPage: React.FC = () => {
       setIsSupported(false);
     }
   }, []);
+
+  // Recalculate distance immediately if the user moves the calibration sliders or RSSI updates
+  useEffect(() => {
+    if (smoothedRssi !== null) {
+      setDistance(calculateDistance(smoothedRssi, txPower, envFactor));
+    }
+  }, [txPower, envFactor, smoothedRssi]);
 
   const startScanning = async () => {
     setError(null);
@@ -88,9 +97,8 @@ const BleTestingPage: React.FC = () => {
         const cleanRssi = kalmanRef.current.filter(currentRssi);
         setSmoothedRssi(cleanRssi);
         
-        // Calculate distance using the filtered signal
-        const estimatedDistance = calculateDistance(cleanRssi, -59, 2.5);
-        setDistance(estimatedDistance);
+        // Note: The distance calculation is now handled by the useEffect above
+        // so it instantly responds to slider changes.
       });
 
       if (bluetoothDevice.watchAdvertisements) {
@@ -154,6 +162,37 @@ const BleTestingPage: React.FC = () => {
             {error}
           </div>
         )}
+
+        {/* --- NEW LIVE CALIBRATION CONTROLS --- */}
+        <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#374151', textTransform: 'uppercase' }}>1-Meter TX Power</span>
+              <span style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 'bold', color: '#1d4ed8' }}>{txPower} dBm</span>
+            </div>
+            <input 
+              type="range" min="-100" max="-30" step="1" 
+              value={txPower} 
+              onChange={(e) => setTxPower(Number(e.target.value))}
+              style={{ width: '100%', cursor: 'pointer' }}
+            />
+            <p style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px', marginBottom: '0' }}>Adjust until Est. Distance is 1.00m at 1m away.</p>
+          </div>
+          
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#374151', textTransform: 'uppercase' }}>Env. Factor (N)</span>
+              <span style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 'bold', color: '#1d4ed8' }}>{envFactor.toFixed(1)}</span>
+            </div>
+            <input 
+              type="range" min="0.1" max="5.0" step="0.1" 
+              value={envFactor} 
+              onChange={(e) => setEnvFactor(Number(e.target.value))}
+              style={{ width: '100%', cursor: 'pointer' }}
+            />
+            <p style={{ fontSize: '10px', color: '#6b7280', marginTop: '4px', marginBottom: '0' }}>Adjust to match true distance at long ranges.</p>
+          </div>
+        </div>
 
         {device && (
           <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '12px', border: '1px solid #f3f4f6' }}>
