@@ -58,7 +58,7 @@ const BleTestingPageFixed: React.FC = () => {
   const deviceRef = useRef<any>(null);
   
   // Persist the Kalman filter instance across React renders
-  const kalmanRef = useRef(new KalmanFilter(0.1, 4.0)); 
+  const kalmanRef = useRef(new KalmanFilter(0.02, 4.0)); 
 
   useEffect(() => {
     // Check if Web Bluetooth is available in this browser
